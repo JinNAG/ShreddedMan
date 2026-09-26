@@ -1,0 +1,26 @@
+{
+  "name": "shreddedman",
+  "version": "1.0.0",
+  "description": "The Python backend lives in `backend/`: code in `backend/src`, tests in\r `backend/tests`, and submissions in `backend/img`. The commands below run from\r the repository root.",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JinNAG/ShreddedMan.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/JinNAG/ShreddedMan/issues"
+  },
+  "homepage": "https://github.com/JinNAG/ShreddedMan#readme",
+  "dependencies": {
+    "express": "^5.2.1",
+    "multer": "^2.4.0"
+  }
+}
