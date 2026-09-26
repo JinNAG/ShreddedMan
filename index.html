@@ -158,12 +158,22 @@
   }
 
   .feature-row {
-    display: flex;
+    display: grid;
     gap: 40px;
-    align-items: flex-start;
+    place-items: center;
     margin-bottom: 40px;
   }
-.screenshot-placeholder {
+
+.content-line {
+width: 100%;
+border: none;
+border-top: 1px solid #1a2a6c;
+margin: 40px 0;
+}
+
+
+
+ .screenshot-placeholder {
   width: 420px;
   height: 500px;
   background: #cfd8e3;
@@ -276,12 +286,24 @@
          <form action="/upload" method="POST" enctype="multipart/form-data">
             <input
                 type="file"
-                id="imageUpload"
-                name="ImageTest"
+                id="Upload"
+                name="ImageUpload"
                 accept="image/png"
             />
              <button type="submit">Submit</button>
         </form>
+
+        
+    </div>
+    <hr class="content-line">
+
+
+    <div>
+        
+
+
+
+
     </div>
 
     </div>
