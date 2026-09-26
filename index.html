@@ -13,7 +13,7 @@
 
   /* ---- Top banner ---- */
   .top-banner {
-    background: #e8fbff;
+    background: #ffffff;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -22,12 +22,12 @@
   .logo-placeholder {
     width: 260px;
     height: 60px;
-    background: #cfd8e3;
-    border: 2px dashed #8896a6;
+    /*background: #cfd8e3;*/
+    /*border: 2px dashed #8896a6;*/
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #556;
+    /*color: #556;*/
     font-size: 12px;
     font-weight: bold;
   }
@@ -100,29 +100,31 @@
     font-size: 13px;
     margin-bottom: 8px;
   }
-  .zip-form input[type="text"] {
+.zip-form {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.zip-form input[type="text"] {
   flex: 1;
   min-width: 0;
-  width: 100%;
   padding: 6px;
   border: 1px solid #8896a6;
 }
-  .zip-form input[type="text"] {
-    flex: 1;
-    padding: 6px;
-    border: 1px solid #8896a6;
-  }
-  .zip-form button {
-    background: #f5921b;
-    border: none;
-    border-radius: 50%;
-    width: 34px;
-    height: 34px;
-    color: white;
-    font-weight: bold;
-    margin-left: 6px;
-    cursor: pointer;
-  }
+
+.zip-form button {
+  flex-shrink: 0;
+  background: #f5921b;
+  border: none;
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  color: white;
+  font-weight: bold;
+  margin-left: 6px;
+  cursor: pointer;
+}
 
   .signup-btn {
     color: #cc0000;
@@ -214,7 +216,7 @@
 <body>
 
   <div class="top-banner">
-    <div class="logo-placeholder"><img alt="logo image" src="Better_Call_Saul_logo.png" style="width:100%;"></div>
+    <div class="logo-placeholder"><img alt="logo image" src="webImg/Better_Call_Saul_logo.png" style="width:100%;"></div>
     <div class="tagline">Experience the Power of the Goodman Recovery!</div>
     <div class="banner-ad-placeholder"></div>
   </div>
@@ -236,7 +238,7 @@
 
       </ul>
 
-      <div class="mascot-placeholder">[ MASCOT / ICON ]</div>
+      <div class="mascot-placeholder"></div>
 
       <div class="availability-box">
         Am I in your area?

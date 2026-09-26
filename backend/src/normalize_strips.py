@@ -1,7 +1,7 @@
 """Unbend mostly vertical strip crops using their alpha masks.
 
 Usage:
-    python src/normalize_strips.py img/<submission_id>
+    python backend/src/normalize_strips.py backend/img/<submission_id>
 
 All submission crops go to normalized_strips/strip<number>.png.
 Rows are resampled horizontally; this does not correct folds, strong bends,
@@ -116,12 +116,12 @@ def normalize_directory(
 def normalize_submission(submission_dir: Path, width: int | None = None) -> list[Path]:
     submission = Submission(Path(submission_dir))
     paths = normalize_directory(submission.cropped_strips, submission.normalized_strips, width)
-    submission.order_path.unlink(missing_ok=True)
-    (submission.final_document / "document.png").unlink(missing_ok=True)
+    submission.invalidate_result()
     manifest = submission.read_manifest()
     manifest.update(status="normalized")
     manifest.pop("error", None)
     manifest.pop("result", None)
+    manifest.pop("join_report", None)
     submission.save_manifest(manifest)
     return paths
 

@@ -60,6 +60,12 @@ class Submission:
     def save_manifest(self, manifest: dict) -> None:
         write_json(self.manifest_path, manifest)
 
+    def invalidate_result(self) -> None:
+        """Remove generated output and its verification together."""
+        self.order_path.unlink(missing_ok=True)
+        for name in ("document.png", "join_report.html", "join_report.json"):
+            (self.final_document / name).unlink(missing_ok=True)
+
     def sources(self) -> list[Path]:
         if not self.source_images.is_dir():
             raise ValueError(f"Submission has no source_images directory: {self.directory}")

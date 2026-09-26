@@ -180,9 +180,3 @@ def match_profiles(
             scores[i, j] = 0.6 * coarse + 0.4 * (0.8 * edge + 0.2 * lines)
             scales[i, j], offsets[i, j], warps[i, j] = scale, offset, warp
     return PairMatches(scores, scales, offsets, warps)
-
-
-def score_pairs(profiles, max_shift=None, scale_range=0.04):
-    """Compatibility wrapper for callers needing just the affine matrices."""
-    matches = match_profiles(profiles, max_shift, scale_range)
-    return matches.scores, matches.scales, matches.offsets

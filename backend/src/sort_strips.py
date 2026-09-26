@@ -1,9 +1,9 @@
 """Estimate the order of upright, normalized strips from a single page.
 
 Usage:
-    python src/sort_strips.py img/<submission_id>
+    python backend/src/sort_strips.py backend/img/<submission_id>
 
-Writes one assembled image to final_document/document.png. Source mappings,
+Writes document.png and join_report.html/json to final_document. Source mappings,
 scores, and alternatives go to order.json at the submission root. Normalized
 PNGs keep their original filenames; blank/low-ink positions remain unresolved.
 """
@@ -16,9 +16,12 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from strip_matching import ink_fraction, ink_profiles, match_profiles, score_pairs
+from strip_matching import ink_fraction, ink_profiles, match_profiles
 from strip_order import optimize_orders
 from submission import Submission, write_json
+from strip_ocr import TesseractOCR
+from join_verification import JoinVerifier, refine_orders
+from join_report import build_join_report, write_join_reports
 
 
 def rank_orders(
@@ -42,42 +45,6 @@ def rank_orders(
     return optimize_orders(scores, count=count)
 
 
-def assemble_preview(
-    images: list[np.ndarray], order: tuple[int, ...], scales: np.ndarray,
-    offsets: np.ndarray, common_height: int, warps: np.ndarray | None = None,
-) -> tuple[np.ndarray, list[dict]]:
-    """Render the estimated joins; only the preview is resized and aligned."""
-    if warps is not None:
-        return _assemble_warped_preview(images, order, warps, common_height)
-    vertical_scales = [1.0]
-    vertical_offsets = [0.0]
-    for a, b in zip(order, order[1:]):
-        vertical_offsets.append(vertical_offsets[-1] + vertical_scales[-1] * offsets[a, b])
-        vertical_scales.append(vertical_scales[-1] * scales[a, b])
-    y_positions = [round(float(y)) for y in vertical_offsets]
-    heights = [max(1, round(common_height * float(scale))) for scale in vertical_scales]
-    top = min(y_positions)
-    bottom = max(y + height for y, height in zip(y_positions, heights))
-    # Photos taken at different distances need a common horizontal scale too.
-    widths = [
-        max(1, round(images[index].shape[1] * common_height / images[index].shape[0]))
-        for index in order
-    ]
-    total_width = sum(widths)
-    preview = np.full((bottom - top, total_width, 3), 255, dtype=np.uint8)
-    placements = []
-    x = 0
-    for index, y, height, width in zip(order, y_positions, heights, widths):
-        image = images[index]
-        alpha = image[:, :, 3:4].astype(np.float32) / 255
-        rgb = np.rint(image[:, :, :3] * alpha + 255 * (1 - alpha)).astype(np.uint8)
-        rgb = cv2.resize(rgb, (width, height), interpolation=cv2.INTER_LINEAR)
-        preview[y - top : y - top + height, x : x + width] = rgb
-        placements.append({"x": x, "y": y - top, "width": width, "height": height})
-        x += width
-    return preview, placements
-
-
 def _extrapolate(points, coordinates, values):
     """Linear extension preserves the strip tips when composing row maps."""
     result = np.interp(points, coordinates, values)
@@ -89,7 +56,10 @@ def _extrapolate(points, coordinates, values):
     return result
 
 
-def _assemble_warped_preview(images, order, warps, height):
+def assemble_preview(
+    images: list[np.ndarray], order: tuple[int, ...], warps: np.ndarray, height: int,
+) -> tuple[np.ndarray, list[dict]]:
+    """Render the matched row maps; only the preview is resized and aligned."""
     rows = np.arange(height, dtype=np.float32)
     maps = [rows]
     for a, b in zip(order, order[1:]):
@@ -122,7 +92,10 @@ def _assemble_warped_preview(images, order, warps, height):
     return preview, placements
 
 
-def sort_strips(input_dirs: Path | list[Path], output_dir: Path) -> dict:
+def sort_strips(
+    input_dirs: Path | list[Path], output_dir: Path, *,
+    ocr_mode: str = "auto", ocr_language: str = "eng", ocr_workers: int = 4,
+) -> dict:
     """Render one document and write its order report beside the output folder."""
     directories = [input_dirs] if isinstance(input_dirs, Path) else list(input_dirs)
     if not directories:
@@ -161,12 +134,26 @@ def sort_strips(input_dirs: Path | list[Path], output_dir: Path) -> dict:
     if len(active) > 1 and not any(np.any(profile[:2] > 0) for profile in profiles):
         raise ValueError("No usable ink near the strip edges; cannot estimate an order.")
 
+    ocr = TesseractOCR(ocr_mode, ocr_language, output_dir.parent / ".ocr_cache.json")
     matches = match_profiles(profiles)
-    scores, scales, offsets = matches.scores, matches.scales, matches.offsets
-    ranked = rank_orders(scores)
+    scales, offsets = matches.scales, matches.offsets
+    active_images = [images[index] for index in active]
+    active_labels = [labels[index] for index in active]
+    visual_order = rank_orders(matches.scores, count=1)[0][1]
+    verifier = JoinVerifier(active_images, matches, common_height, ocr, workers=ocr_workers)
+    print(f"OCR verification: {ocr.status}. Comparing {len(active) * (len(active) - 1)} directed joins.", flush=True)
+    try:
+        scores = verifier.score_pairs()
+        pair_ranked = rank_orders(scores)
+        print("Refining the order using text across three neighboring strips..." if ocr.enabled
+              else f"Visual-only ordering: {ocr.reason}", flush=True)
+        ranked, refinement = refine_orders(pair_ranked, scores, verifier)
+        join_report = build_join_report(ranked[0][1], ranked, scores, verifier, active_labels, refinement)
+    finally:
+        ocr.flush()
     best_score, active_order = ranked[0]
     preview, placements = assemble_preview(
-        [images[index] for index in active], active_order, scales, offsets, common_height, matches.warps
+        active_images, active_order, matches.warps, common_height
     )
     order = tuple(active[index] for index in active_order) + tuple(low_ink)
     placements.extend([None] * len(low_ink))
@@ -184,19 +171,31 @@ def sort_strips(input_dirs: Path | list[Path], output_dir: Path) -> dict:
             "margin_over_next_best_right": margin,
             "present_in_top_orders": support,
             "ambiguous": (margin is not None and margin < 0.02) or support < len(ranked),
+            "confidence": join_report["joins"][len(join_details)]["confidence"],
         })
     report = {
         "estimated": True,
         "input_directories": [str(directory) for directory in directories],
         "assumptions": "Upright strips from one page; missing strips are not identified.",
         "search": "exhaustive" if len(active) <= 8 else "mixed_integer_global",
-        "optimal_for_pairwise_scores": True,
+        "optimal_for_pairwise_scores": active_order == pair_ranked[0][1],
         "matching": {
             "method": "full-height edge ink and text-row traces; affine refinement and constrained local alignment",
             "ordered_pairs_compared": len(active) * (len(active) - 1),
             "edge_weight": 0.8, "text_row_weight": 0.2,
             "affine_weight": 0.6, "locally_aligned_weight": 0.4,
             "low_ink_threshold": 0.0005,
+        },
+        "verification": {
+            "ocr": ocr.metadata(),
+            "visual_order": [active_labels[index] for index in visual_order],
+            "pairwise_order": [active_labels[index] for index in pair_ranked[0][1]],
+            "order_changed_by_verification": active_order != visual_order,
+            "pair_score_weights": {"visual": 0.65, "stroke": 0.05, "ocr_ink_evidence": 0.30} if ocr.enabled else {"visual": 1.0},
+            "pair_score_fallback": "Use the visual score alone when fewer than three text lines touch the join.",
+            "context_score_weights": {"pair_score": 0.8, "three_strip_ocr": 0.2} if refinement["enabled"] else {"pair_score": 1.0},
+            "refinement": refinement,
+            "html_report": f"{output_dir.name}/join_report.html", "json_report": f"{output_dir.name}/join_report.json",
         },
         "text_strip_count": len(active),
         "unplaced_low_ink_count": len(low_ink),
@@ -238,11 +237,14 @@ def sort_strips(input_dirs: Path | list[Path], output_dir: Path) -> dict:
     finally:
         temporary.unlink(missing_ok=True)
     report["result"] = f"{output_dir.name}/document.png"
+    write_join_reports(output_dir, join_report, verifier, active_order)
     write_json(output_dir.parent / "order.json", report)
     return report
 
 
-def sort_submission(submission_dir: Path) -> dict:
+def sort_submission(
+    submission_dir: Path, *, ocr_mode: str = "auto", ocr_language: str = "eng", ocr_workers: int = 4,
+) -> dict:
     """Sort a submission's pooled strips and attach per-photo provenance."""
     submission = Submission(Path(submission_dir))
     manifest = submission.read_manifest()
@@ -252,7 +254,8 @@ def sort_submission(submission_dir: Path) -> dict:
     }
     if provenance and normalized_names != set(provenance):
         raise ValueError("Normalized strips do not match detection; rerun normalization for this submission.")
-    report = sort_strips(submission.normalized_strips, submission.final_document)
+    report = sort_strips(submission.normalized_strips, submission.final_document,
+                         ocr_mode=ocr_mode, ocr_language=ocr_language, ocr_workers=ocr_workers)
     report.update(
         submission_id=submission.directory.name, input_directory="normalized_strips",
         input_directories=["normalized_strips"], source_images=manifest.get("sources", []),
@@ -264,7 +267,7 @@ def sort_submission(submission_dir: Path) -> dict:
             entry["source_image"] = provenance[name]["source_image"]
             entry["source_strip_number"] = provenance[name]["source_strip_number"]
     write_json(submission.order_path, report)
-    manifest.update(status="complete", result="final_document/document.png")
+    manifest.update(status="complete", result="final_document/document.png", join_report="final_document/join_report.html")
     manifest.pop("error", None)
     submission.save_manifest(manifest)
     return report
@@ -273,17 +276,22 @@ def sort_submission(submission_dir: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "submission_dir", type=Path, help="Submission folder: img/<submission_id>.",
+        "submission_dir", type=Path, help="Submission folder: backend/img/<submission_id> (from the repository root).",
     )
+    parser.add_argument("--ocr", choices=("auto", "required", "off"), default="auto")
+    parser.add_argument("--ocr-language", default="eng", help="Installed Tesseract language(s), e.g. eng or eng+deu.")
+    parser.add_argument("--ocr-workers", type=int, default=4)
     args = parser.parse_args()
     try:
-        report = sort_submission(args.submission_dir)
+        report = sort_submission(args.submission_dir, ocr_mode=args.ocr,
+                                 ocr_language=args.ocr_language, ocr_workers=args.ocr_workers)
     except (ValueError, RuntimeError) as error:
         parser.error(str(error))
     print("Estimated text order: " + " -> ".join(
         entry["source"] for entry in report["order"] if entry["position_status"] == "estimated"
     ))
     print(f"Saved {args.submission_dir / report['result']}")
+    print(f"Join report: {args.submission_dir / report['verification']['html_report']}")
     print(f"{report['unplaced_low_ink_count']} blank/low-ink strips have unresolved positions.")
     print("Review the preview; scores rank candidates and are not confidence probabilities.")
 
