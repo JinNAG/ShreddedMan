@@ -1,23 +1,26 @@
 """Create and process one submission from one or more uploaded photos.
 
 Examples:
-    python src/assemble_document.py /path/photo1.jpg /path/photo2.jpg
-    python src/assemble_document.py --submission img/<submission_id>
+    python backend/src/main.py /path/photo1.jpg /path/photo2.jpg
+    python backend/src/main.py --submission backend/img/<submission_id>
 
-New submissions get UUID directories in img/. An existing submission can be
+New submissions get UUID directories in backend/img/. An existing submission can be
 reprocessed in place; every supported image in its source_images is included.
 """
 
 import argparse
 from pathlib import Path
 
-from detect_paper import detect_submission, orient_photo
+from detect_paper import detect_submission
 from normalize_strips import normalize_submission
 from sort_strips import sort_submission
 from submission import DEFAULT_IMG_ROOT, Submission, create_submission
 
 
-def process_submission(submission_dir: Path, rotation: str = "auto") -> dict:
+def process_submission(
+    submission_dir: Path, rotation: str = "auto", *,
+    ocr_mode: str = "auto", ocr_language: str = "eng", ocr_workers: int = 4,
+) -> dict:
     """Run all stages in one existing submission, recording its status."""
     submission = Submission(Path(submission_dir))
     if not submission.source_images.is_dir():
@@ -28,14 +31,17 @@ def process_submission(submission_dir: Path, rotation: str = "auto") -> dict:
         manifest.update(status="processing")
         manifest.pop("error", None)
         manifest.pop("result", None)
+        manifest.pop("join_report", None)
         submission.save_manifest(manifest)
         detect_submission(submission.directory, rotation)
         normalize_submission(submission.directory)
-        report = sort_submission(submission.directory)
+        report = sort_submission(submission.directory, ocr_mode=ocr_mode,
+                                 ocr_language=ocr_language, ocr_workers=ocr_workers)
     except Exception as error:
         manifest = submission.read_manifest()
         manifest.update(status="failed", error=str(error))
         manifest.pop("result", None)
+        manifest.pop("join_report", None)
         submission.save_manifest(manifest)
         raise
     return {**report, "submission_dir": str(submission.directory)}
@@ -43,10 +49,12 @@ def process_submission(submission_dir: Path, rotation: str = "auto") -> dict:
 
 def assemble_document(
     source_images: list[Path], img_root: Path = DEFAULT_IMG_ROOT, rotation: str = "auto",
+    *, ocr_mode: str = "auto", ocr_language: str = "eng", ocr_workers: int = 4,
 ) -> dict:
     """Application entry point: copy uploads, reserve a UUID, and assemble."""
     submission = create_submission(source_images, img_root)
-    return process_submission(submission.directory, rotation)
+    return process_submission(submission.directory, rotation, ocr_mode=ocr_mode,
+                              ocr_language=ocr_language, ocr_workers=ocr_workers)
 
 
 def main() -> None:
@@ -58,18 +66,24 @@ def main() -> None:
         "--rotation", choices=("auto", "0", "90", "180", "270"), default="auto",
         help="Counterclockwise rotation before detection (default: auto).",
     )
+    parser.add_argument("--ocr", choices=("auto", "required", "off"), default="auto")
+    parser.add_argument("--ocr-language", default="eng")
+    parser.add_argument("--ocr-workers", type=int, default=4)
     args = parser.parse_args()
     if bool(args.source_images) == bool(args.submission):
         parser.error("Provide source photos OR --submission with an existing submission folder.")
     try:
         if args.submission:
-            report = process_submission(args.submission, args.rotation)
+            report = process_submission(args.submission, args.rotation, ocr_mode=args.ocr,
+                                        ocr_language=args.ocr_language, ocr_workers=args.ocr_workers)
         else:
-            report = assemble_document(args.source_images, args.img_root, args.rotation)
+            report = assemble_document(args.source_images, args.img_root, args.rotation, ocr_mode=args.ocr,
+                                       ocr_language=args.ocr_language, ocr_workers=args.ocr_workers)
     except (ValueError, OSError, RuntimeError) as error:
         parser.error(str(error))
     print(f"Submission: {report['submission_dir']}")
     print(f"Saved {Path(report['submission_dir']) / report['result']}")
+    print(f"Join report: {Path(report['submission_dir']) / report['verification']['html_report']}")
     print(f"Ordered {report['text_strip_count']} text strips; {report['unplaced_low_ink_count']} low-ink positions unresolved.")
 
 

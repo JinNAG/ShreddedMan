@@ -140,11 +140,11 @@ def detect_submission(submission_dir: Path, rotation: str = "auto") -> list[Path
     for path in submission.normalized_strips.glob("strip*.png"):
         if path.stem[5:].isdigit():
             path.unlink()
-    submission.order_path.unlink(missing_ok=True)
-    (submission.final_document / "document.png").unlink(missing_ok=True)
+    submission.invalidate_result()
     manifest.update(status="detected", sources=sources, strips=mapping)
     manifest.pop("error", None)
     manifest.pop("result", None)
+    manifest.pop("join_report", None)
     submission.save_manifest(manifest)
     return [submission.cropped_strips / entry["filename"] for entry in mapping]
 
@@ -154,7 +154,7 @@ def main() -> None:
         description="Detect strips from all source_images in an existing submission."
     )
     parser.add_argument(
-        "submission_dir", type=Path, help="Submission folder: img/<submission_id>.",
+        "submission_dir", type=Path, help="Submission folder: backend/img/<submission_id> (from the repository root).",
     )
     parser.add_argument("--rotation", choices=("auto", "0", "90", "180", "270"), default="auto")
     args = parser.parse_args()
