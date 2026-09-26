@@ -137,8 +137,35 @@ result = process_submission(submission.directory)
 ```
 
 Separate submissions can be processed independently. A single submission
-should have one processing job at a time. The pipeline is still synchronous;
-HTTP uploads, job scheduling, and the user interface are not implemented here.
+should have one processing job at a time. The Python pipeline is synchronous;
+the HTTP API below schedules it in a background worker. The existing frontend
+is unchanged and is not connected to the API yet.
+
+## Backend API
+
+From the repository root, with your virtual environment activated:
+
+```sh
+python -m uvicorn api:app --app-dir src --host 127.0.0.1 --port 8000
+```
+
+Open http://127.0.0.1:8000/docs to try uploads and view the full API reference.
+
+| Method | Endpoint | Result |
+| --- | --- | --- |
+| POST | `/api/submissions` | Upload photos; receive a submission ID and status URL (HTTP 202). |
+| GET | `/api/submissions/{id}` | Check progress and get the result URL or error. |
+| GET | `/api/submissions/{id}/document` | Retrieve the completed PNG. |
+
+Send photos of one document in the multipart field `files`, with optional
+`rotation` (`auto`, `0`, `90`, `180`, or `270`). Poll the returned `status_url`
+until `complete` or `failed`, then use `document_url` or display `error`.
+
+Files are stored under `img/`; set `SHREDDEDMAN_IMG_ROOT` to change the location.
+This local-development API uses one background worker and an in-memory queue;
+unfinished jobs must be resubmitted after a forced stop. The frontend is not connected yet.
+
+## Reconstruction and tests
 
 Sorting compares all ordered pairs using full-height edge ink and text-row
 alignment, with vertical scale/offset search and small smooth local corrections.
@@ -165,8 +192,11 @@ neighbors. The reports flag weak evidence and competing choices for review.
 Run the regression checks:
 
 ```sh
+python -m pip install -r requirements-dev.txt
 python -m unittest discover -s backend/tests -v
 ```
+
+API tests use temporary storage and leave sample submissions unchanged.
 
 The existing sample images have been migrated into these submissions:
 
