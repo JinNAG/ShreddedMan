@@ -194,5 +194,6 @@
   ],
   "result": "final_document/document.png",
   "sample_name": "photo3",
-  "previous_results_archive": "previous_results.zip"
+  "previous_results_archive": "previous_results.zip",
+  "join_report": "final_document/join_report.html"
 }

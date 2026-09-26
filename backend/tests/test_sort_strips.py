@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import sys
 import tempfile
 import unittest
@@ -8,7 +9,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sort_strips import ink_profiles, rank_orders, score_pairs, sort_strips
+from sort_strips import rank_orders, sort_strips
+from strip_matching import ink_profiles, match_profiles
 
 
 class StripSortingTests(unittest.TestCase):
@@ -28,10 +30,10 @@ class StripSortingTests(unittest.TestCase):
 
     def test_blank_paper_has_no_matching_evidence_or_arbitrary_offset(self):
         profiles = [ink_profiles(np.full((200, 40, 4), 255, np.uint8), 200)] * 2
-        scores, scales, offsets = score_pairs(profiles)
-        self.assertEqual(scores[0, 1], 0)
-        self.assertEqual(scales[0, 1], 1)
-        self.assertEqual(offsets[0, 1], 0)
+        matches = match_profiles(profiles)
+        self.assertEqual(matches.scores[0, 1], 0)
+        self.assertEqual(matches.scales[0, 1], 1)
+        self.assertEqual(matches.offsets[0, 1], 0)
 
     def test_hidden_background_colors_do_not_change_ink_profiles(self):
         image = np.full((200, 40, 4), 255, np.uint8)
@@ -70,7 +72,7 @@ class StripSortingTests(unittest.TestCase):
             for number, original in enumerate((2, 0, 3, 1), 1):
                 self.assertTrue(cv2.imwrite(str(input_dir / f"strip{number}.png"), pieces[original]))
             originals = {path.name: path.read_bytes() for path in input_dir.glob("*.png")}
-            report = sort_strips(input_dir, output_dir)
+            report = sort_strips(input_dir, output_dir, ocr_mode="off")
             self.assertEqual(
                 [item["source"] for item in report["order"]],
                 ["strip2.png", "strip4.png", "strip1.png", "strip3.png"],
@@ -80,8 +82,17 @@ class StripSortingTests(unittest.TestCase):
             self.assertEqual(report["search"], "exhaustive")
             self.assertIsNotNone(cv2.imread(str(output_dir / "document.png")))
             self.assertTrue((output_dir.parent / "order.json").is_file())
-            self.assertEqual([p.name for p in output_dir.iterdir()], ["document.png"])
+            self.assertEqual({p.name for p in output_dir.iterdir()}, {"document.png", "join_report.html", "join_report.json"})
             self.assertEqual([item["position"] for item in report["order"]], [1, 2, 3, 4])
+            verification = json.loads((output_dir / "join_report.json").read_text())
+            self.assertEqual(len(verification["joins"]), 3)
+            self.assertEqual(verification["ocr"]["status"], "disabled")
+            for index, join in enumerate(verification["joins"]):
+                self.assertEqual((join["left_position"], join["right_position"]), (index + 1, index + 2))
+                self.assertEqual(join["left_strip"], report["order"][index]["source"])
+                self.assertEqual(join["right_strip"], report["order"][index + 1]["source"])
+                self.assertEqual(join["confidence"]["level"], "low")
+                self.assertIsNone(join["scores"]["ocr_ink_evidence"])
 
     def test_full_height_matching_handles_warp_and_keeps_blanks_out_of_text(self):
         height, width, count = 1200, 64, 5
@@ -112,7 +123,7 @@ class StripSortingTests(unittest.TestCase):
             blank = np.full((height, width, 4), 255, np.uint8)
             blank[:, :2, :3] = 90  # Cut-edge shadows must not count as text.
             cv2.imwrite(str(inputs / "strip6.png"), blank)
-            report = sort_strips(inputs, output)
+            report = sort_strips(inputs, output, ocr_mode="off")
             self.assertEqual([entry["source"] for entry in report["order"]],
                              ["strip4.png", "strip2.png", "strip5.png", "strip1.png", "strip3.png", "strip6.png"])
             self.assertEqual(report["matching"]["ordered_pairs_compared"], 20)
@@ -133,7 +144,7 @@ class StripSortingTests(unittest.TestCase):
             cv2.imwrite(str(inputs / "strip1.png"), np.full((200, 40, 4), 255, np.uint8))
             (output.parent / "order.json").write_text("previous result")
             with self.assertRaisesRegex(ValueError, "blank or too faint"):
-                sort_strips(inputs, output)
+                sort_strips(inputs, output, ocr_mode="off")
             self.assertEqual((output.parent / "order.json").read_text(), "previous result")
 
 
