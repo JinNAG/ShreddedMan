@@ -1,10 +1,35 @@
 import argparse
 from pathlib import Path
+import tempfile
 
 import cv2
 import numpy as np
 
 from strip_geometry import repair_strip_mask
+from submission import Submission
+
+
+def orient_photo(image, rotation: str = "auto"):
+    """Make strip length vertical; return the image and applied CCW degrees."""
+    if rotation == "auto":
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        _, mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return image, 0
+        _, _, width, height = cv2.boundingRect(max(contours, key=cv2.contourArea))
+        degrees = 90 if width > height else 0
+    else:
+        degrees = int(rotation)
+    rotations = {
+        90: cv2.ROTATE_90_COUNTERCLOCKWISE,
+        180: cv2.ROTATE_180,
+        270: cv2.ROTATE_90_CLOCKWISE,
+    }
+    if degrees not in (0, 90, 180, 270):
+        raise ValueError("Rotation must be auto, 0, 90, 180, or 270.")
+    return (cv2.rotate(image, rotations[degrees]) if degrees else image), degrees
+
 
 def detect_strips(image: np.ndarray, min_strip_area: float = 100) -> list[np.ndarray]:
     """Find mostly vertical paper strips, bridging interruptions caused by ink."""
@@ -35,11 +60,16 @@ def detect_strips(image: np.ndarray, min_strip_area: float = 100) -> list[np.nda
     return sorted(strips, key=lambda contour: cv2.boundingRect(contour)[:2])
 
 
-def save_strips(image: np.ndarray, strips: list[np.ndarray], output_dir: Path) -> None:
+def save_strips(
+    image: np.ndarray, strips: list[np.ndarray], output_dir: Path,
+    start_number: int = 1, remove_stale: bool = True,
+) -> list[Path]:
     """Save complete strips and remove obsolete numbered crops after success."""
+    if start_number < 1:
+        raise ValueError("Strip numbering must start at 1 or greater.")
     output_dir.mkdir(parents=True, exist_ok=True)
-    saved_names = set()
-    for number, strip in enumerate(strips, start=1):
+    saved = []
+    for number, strip in enumerate(strips, start=start_number):
         x, y, width, height = cv2.boundingRect(strip)
         cropped = image[y : y + height, x : x + width]
         strip_mask = np.zeros((height, width), dtype=np.uint8)
@@ -57,36 +87,82 @@ def save_strips(image: np.ndarray, strips: list[np.ndarray], output_dir: Path) -
         output_path = output_dir / f"strip{number}.png"
         if not cv2.imwrite(str(output_path), result):
             raise OSError(f"Could not save {output_path}")
-        saved_names.add(output_path.name)
+        saved.append(output_path)
 
-    for path in output_dir.glob("strip*.png"):
-        if path.stem[5:].isdigit() and path.name not in saved_names:
+    if remove_stale:
+        saved_names = {path.name for path in saved}
+        for path in output_dir.glob("strip*.png"):
+            if path.stem[5:].isdigit() and path.name not in saved_names:
+                path.unlink()
+    return saved
+
+
+def detect_submission(submission_dir: Path, rotation: str = "auto") -> list[Path]:
+    """Pool crops from every source photo using one submission-wide sequence."""
+    submission = Submission(Path(submission_dir))
+    paths = submission.sources()
+    submission.ensure_layout()
+    manifest = submission.read_manifest()
+    originals = {source["filename"]: source.get("original_name", source["filename"])
+                 for source in manifest.get("sources", [])}
+    sources, mapping = [], []
+    # Finish all photos before replacing existing crops. A bad later upload
+    # must not silently leave a submission containing only the earlier photos.
+    with tempfile.TemporaryDirectory(prefix=".detect-", dir=submission.directory) as directory:
+        staged = Path(directory)
+        for path in paths:
+            image = cv2.imread(str(path))
+            if image is None:
+                raise ValueError(f"Could not open {path}")
+            image, degrees = orient_photo(image, rotation)
+            strips = detect_strips(image)
+            if not strips:
+                raise ValueError(f"No paper strips detected in {path}")
+            saved = save_strips(image, strips, staged, start_number=len(mapping) + 1, remove_stale=False)
+            for number, crop in enumerate(saved, 1):
+                mapping.append({
+                    "filename": crop.name, "source_image": f"source_images/{path.name}",
+                    "source_strip_number": number,
+                })
+            sources.append({
+                "filename": path.name, "original_name": originals.get(path.name, path.name),
+                "rotation_ccw": degrees, "strip_count": len(strips),
+            })
+            print(f"{path.name}: {len(strips)} strips, rotation {degrees} degrees CCW")
+        names = {entry["filename"] for entry in mapping}
+        for name in names:
+            (staged / name).replace(submission.cropped_strips / name)
+        for path in submission.cropped_strips.glob("strip*.png"):
+            if path.stem[5:].isdigit() and path.name not in names:
+                path.unlink()
+
+    # Detection changes the meaning of strip IDs. Invalidate downstream output.
+    for path in submission.normalized_strips.glob("strip*.png"):
+        if path.stem[5:].isdigit():
             path.unlink()
+    submission.order_path.unlink(missing_ok=True)
+    (submission.final_document / "document.png").unlink(missing_ok=True)
+    manifest.update(status="detected", sources=sources, strips=mapping)
+    manifest.pop("error", None)
+    manifest.pop("result", None)
+    submission.save_manifest(manifest)
+    return [submission.cropped_strips / entry["filename"] for entry in mapping]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Detect paper strips in a photo and save transparent PNG crops."
+        description="Detect strips from all source_images in an existing submission."
     )
     parser.add_argument(
-        "image_path",
-        nargs="?",
-        type=Path,
-        default=Path("img/source_images/photo2.jpg"),
-        help="Original photo, including its background (default: img/source_images/photo2.jpg).",
+        "submission_dir", type=Path, help="Submission folder: img/<submission_id>.",
     )
-    image_path = parser.parse_args().image_path
-    image = cv2.imread(str(image_path))
-    if image is None:
-        raise FileNotFoundError(f"Could not open {image_path}")
-
-    strips = detect_strips(image)
-    if not strips:
-        raise ValueError("No paper detected. Try lowering the threshold.")
-
-    output_dir = Path("img/cropped_images") / image_path.stem
-    save_strips(image, strips, output_dir)
-    print(f"Saved {len(strips)} strips to {output_dir}")
+    parser.add_argument("--rotation", choices=("auto", "0", "90", "180", "270"), default="auto")
+    args = parser.parse_args()
+    try:
+        paths = detect_submission(args.submission_dir, args.rotation)
+    except ValueError as error:
+        parser.error(str(error))
+    print(f"Saved {len(paths)} strips to {args.submission_dir / 'cropped_strips'}")
 
 
 if __name__ == "__main__":

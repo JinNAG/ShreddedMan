@@ -1,9 +1,9 @@
 """Unbend mostly vertical strip crops using their alpha masks.
 
 Usage:
-    python src/normalize_strips.py img/cropped_images/photo2
+    python src/normalize_strips.py img/<submission_id>
 
-Outputs go to img/normalized_images/<input directory name>/strip<number>.png.
+All submission crops go to normalized_strips/strip<number>.png.
 Rows are resampled horizontally; this does not correct folds, strong bends,
 or vertical perspective distortion.
 """
@@ -15,6 +15,7 @@ import cv2
 import numpy as np
 
 from strip_geometry import estimate_strip_edges
+from submission import Submission
 
 
 def normalize_strip(image: np.ndarray, width: int | None = None) -> np.ndarray:
@@ -63,35 +64,27 @@ def normalize_strip(image: np.ndarray, width: int | None = None) -> np.ndarray:
     return np.clip(np.rint(result), 0, 255).astype(np.uint8)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "input_dir",
-        nargs="?",
-        type=Path,
-        default=Path("img/cropped_images/photo1"),
-        help="Directory of transparent strip PNGs from detect_paper.py.",
-    )
-    parser.add_argument("--output-dir", type=Path)
-    parser.add_argument(
-        "--width", type=int, help="Output width in pixels (default: median per strip)."
-    )
-    args = parser.parse_args()
-
-    if args.width is not None and args.width < 2:
-        parser.error("--width must be at least 2 pixels")
-    if not args.input_dir.is_dir():
-        parser.error(f"Input directory does not exist: {args.input_dir}")
+def normalize_directory(
+    input_dir: Path, output_dir: Path | None = None, width: int | None = None
+) -> list[Path]:
+    """Normalize pooled crops, keeping submission-wide strip filenames."""
+    if width is not None and width < 2:
+        raise ValueError("--width must be at least 2 pixels")
+    if not input_dir.is_dir():
+        raise ValueError(f"Input directory does not exist: {input_dir}")
     paths = sorted(
-        (path for path in args.input_dir.glob("strip*.png") if path.stem[5:].isdigit()),
+        (path for path in input_dir.glob("strip*.png") if path.stem[5:].isdigit()),
         key=lambda path: int(path.stem[5:]),
     )
     if not paths:
-        parser.error(f"No strip PNGs found in {args.input_dir}")
+        raise ValueError(f"No strip PNGs found in {input_dir}")
 
-    output_dir = args.output_dir or Path("img/normalized_images") / args.input_dir.name
-    if output_dir.resolve() == args.input_dir.resolve():
-        parser.error("Output directory must differ from the input directory")
+    if output_dir is None:
+        if input_dir.name != "cropped_strips":
+            raise ValueError("Specify output_dir or use a submission's cropped_strips directory.")
+        output_dir = input_dir.parent / "normalized_strips"
+    if output_dir.resolve() == input_dir.resolve():
+        raise ValueError("Output directory must differ from the input directory")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for path in paths:
@@ -99,7 +92,7 @@ def main() -> None:
         if image is None:
             raise OSError(f"Could not open {path}")
         try:
-            normalized = normalize_strip(image, width=args.width)
+            normalized = normalize_strip(image, width=width)
         except ValueError as error:
             raise ValueError(f"{path}: {error}") from error
         output_path = output_dir / path.name
@@ -117,6 +110,40 @@ def main() -> None:
             path.unlink()
 
     print(f"Normalized {len(paths)} strips into {output_dir}")
+    return [output_dir / path.name for path in paths]
+
+
+def normalize_submission(submission_dir: Path, width: int | None = None) -> list[Path]:
+    submission = Submission(Path(submission_dir))
+    paths = normalize_directory(submission.cropped_strips, submission.normalized_strips, width)
+    submission.order_path.unlink(missing_ok=True)
+    (submission.final_document / "document.png").unlink(missing_ok=True)
+    manifest = submission.read_manifest()
+    manifest.update(status="normalized")
+    manifest.pop("error", None)
+    manifest.pop("result", None)
+    submission.save_manifest(manifest)
+    return paths
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "input_dir", type=Path,
+        help="Submission folder, or a crop directory when using --output-dir.",
+    )
+    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument(
+        "--width", type=int, help="Output width in pixels (default: median per strip)."
+    )
+    args = parser.parse_args()
+    try:
+        if args.output_dir is None and (args.input_dir / "cropped_strips").is_dir():
+            normalize_submission(args.input_dir, args.width)
+        else:
+            normalize_directory(args.input_dir, args.output_dir, args.width)
+    except ValueError as error:
+        parser.error(str(error))
 
 
 if __name__ == "__main__":

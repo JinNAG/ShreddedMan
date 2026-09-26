@@ -1,0 +1,325 @@
+{
+  "estimated": true,
+  "input_directories": [
+    "normalized_strips"
+  ],
+  "assumptions": "Upright strips from one page; missing strips are not identified.",
+  "search": "exhaustive",
+  "optimal_for_pairwise_scores": true,
+  "matching": {
+    "method": "full-height edge ink and text-row traces; affine refinement and constrained local alignment",
+    "ordered_pairs_compared": 20,
+    "edge_weight": 0.8,
+    "text_row_weight": 0.2,
+    "affine_weight": 0.6,
+    "locally_aligned_weight": 0.4,
+    "low_ink_threshold": 0.0005
+  },
+  "text_strip_count": 5,
+  "unplaced_low_ink_count": 0,
+  "document_contents": "Text-bearing strips only. Low-ink strips stay in normalized_strips with unresolved positions.",
+  "common_height": 3585,
+  "mean_score": 0.6563268232341798,
+  "runner_up_gap": 0.012390206085743372,
+  "order": [
+    {
+      "position": 1,
+      "source": "strip3.png",
+      "source_path": "normalized_strips/strip3.png",
+      "preview": {
+        "x": 0,
+        "y": 14,
+        "width": 80,
+        "height": 3585,
+        "alignment": "affine plus smooth local row offsets"
+      },
+      "ink_fraction": 0.08112097440132122,
+      "position_status": "estimated",
+      "source_image": "source_images/photo2.jpg",
+      "source_strip_number": 3
+    },
+    {
+      "position": 2,
+      "source": "strip2.png",
+      "source_path": "normalized_strips/strip2.png",
+      "preview": {
+        "x": 80,
+        "y": 51,
+        "width": 80,
+        "height": 3522,
+        "alignment": "affine plus smooth local row offsets"
+      },
+      "ink_fraction": 0.0866597004528039,
+      "position_status": "estimated",
+      "source_image": "source_images/photo2.jpg",
+      "source_strip_number": 2
+    },
+    {
+      "position": 3,
+      "source": "strip5.png",
+      "source_path": "normalized_strips/strip5.png",
+      "preview": {
+        "x": 160,
+        "y": 17,
+        "width": 82,
+        "height": 3569,
+        "alignment": "affine plus smooth local row offsets"
+      },
+      "ink_fraction": 0.07646741519159309,
+      "position_status": "estimated",
+      "source_image": "source_images/photo2.jpg",
+      "source_strip_number": 5
+    },
+    {
+      "position": 4,
+      "source": "strip4.png",
+      "source_path": "normalized_strips/strip4.png",
+      "preview": {
+        "x": 242,
+        "y": 41,
+        "width": 83,
+        "height": 3530,
+        "alignment": "affine plus smooth local row offsets"
+      },
+      "ink_fraction": 0.08731728983283533,
+      "position_status": "estimated",
+      "source_image": "source_images/photo2.jpg",
+      "source_strip_number": 4
+    },
+    {
+      "position": 5,
+      "source": "strip1.png",
+      "source_path": "normalized_strips/strip1.png",
+      "preview": {
+        "x": 325,
+        "y": 0,
+        "width": 81,
+        "height": 3572,
+        "alignment": "affine plus smooth local row offsets"
+      },
+      "ink_fraction": 0.0803723927662807,
+      "position_status": "estimated",
+      "source_image": "source_images/photo2.jpg",
+      "source_strip_number": 1
+    }
+  ],
+  "alternatives": [
+    {
+      "sources": [
+        "strip3.png",
+        "strip2.png",
+        "strip5.png",
+        "strip4.png",
+        "strip1.png"
+      ],
+      "mean_score": 0.6563268232341798
+    },
+    {
+      "sources": [
+        "strip1.png",
+        "strip5.png",
+        "strip4.png",
+        "strip3.png",
+        "strip2.png"
+      ],
+      "mean_score": 0.6439366171484364
+    },
+    {
+      "sources": [
+        "strip2.png",
+        "strip5.png",
+        "strip4.png",
+        "strip3.png",
+        "strip1.png"
+      ],
+      "mean_score": 0.6406008810498373
+    },
+    {
+      "sources": [
+        "strip1.png",
+        "strip3.png",
+        "strip2.png",
+        "strip5.png",
+        "strip4.png"
+      ],
+      "mean_score": 0.6400118794337133
+    },
+    {
+      "sources": [
+        "strip1.png",
+        "strip4.png",
+        "strip3.png",
+        "strip2.png",
+        "strip5.png"
+      ],
+      "mean_score": 0.6388237717881563
+    }
+  ],
+  "joins": [
+    {
+      "left": "strip3.png",
+      "right": "strip2.png",
+      "score": 0.6938355653544421,
+      "next_best_right": "strip1.png",
+      "margin_over_next_best_right": 0.06283310824811417,
+      "present_in_top_orders": 4,
+      "ambiguous": true
+    },
+    {
+      "left": "strip2.png",
+      "right": "strip5.png",
+      "score": 0.6908827125189649,
+      "next_best_right": "strip4.png",
+      "margin_over_next_best_right": 0.08759055181012365,
+      "present_in_top_orders": 4,
+      "ambiguous": true
+    },
+    {
+      "left": "strip5.png",
+      "right": "strip4.png",
+      "score": 0.6292014233711314,
+      "next_best_right": "strip3.png",
+      "margin_over_next_best_right": 0.057796792350888415,
+      "present_in_top_orders": 4,
+      "ambiguous": true
+    },
+    {
+      "left": "strip4.png",
+      "right": "strip1.png",
+      "score": 0.6113875916921808,
+      "next_best_right": "strip3.png",
+      "margin_over_next_best_right": 7.066048925608026e-05,
+      "present_in_top_orders": 1,
+      "ambiguous": true
+    }
+  ],
+  "matrix_sources": [
+    "strip1.png",
+    "strip2.png",
+    "strip3.png",
+    "strip4.png",
+    "strip5.png"
+  ],
+  "pairwise_scores": [
+    [
+      null,
+      0.6027132384832636,
+      0.5461278164903146,
+      0.5592598780762933,
+      0.6413925486652476
+    ],
+    [
+      0.5517224543730108,
+      null,
+      0.567466128745203,
+      0.6032921607088413,
+      0.6908827125189649
+    ],
+    [
+      0.631002457106328,
+      0.6938355653544421,
+      null,
+      0.5734125634925802,
+      0.5755236670042981
+    ],
+    [
+      0.6113875916921808,
+      0.5961496668470544,
+      0.6113169312029247,
+      null,
+      0.5796078555028363
+    ],
+    [
+      0.5247895990745759,
+      0.5696666702794198,
+      0.571404631020243,
+      0.6292014233711314,
+      null
+    ]
+  ],
+  "pairwise_scales": [
+    [
+      1.0,
+      0.9854951185495119,
+      1.0072524407252441,
+      0.9877266387726639,
+      0.9955369595536959
+    ],
+    [
+      1.0145048814504882,
+      1.0,
+      1.0234309623430962,
+      1.003905160390516,
+      1.0128312412831242
+    ],
+    [
+      0.9894002789400279,
+      0.9821478382147838,
+      1.0,
+      0.9866108786610879,
+      0.9933054393305439
+    ],
+    [
+      1.011994421199442,
+      0.99860529986053,
+      1.0133891213389121,
+      1.0,
+      1.010041841004184
+    ],
+    [
+      1.003905160390516,
+      0.9899581589958159,
+      1.0072524407252441,
+      0.9888423988842399,
+      1.0
+    ]
+  ],
+  "pairwise_offsets": [
+    [
+      0,
+      49,
+      5,
+      40,
+      24
+    ],
+    [
+      -51,
+      0,
+      -47,
+      -14,
+      -33
+    ],
+    [
+      1,
+      37,
+      0,
+      23,
+      10
+    ],
+    [
+      -42,
+      5,
+      -26,
+      0,
+      -24
+    ],
+    [
+      -26,
+      23,
+      -13,
+      24,
+      0
+    ]
+  ],
+  "input_directory": "normalized_strips",
+  "result": "final_document/document.png",
+  "submission_id": "5f79ef7265914cc4bac385a2a5c68b60",
+  "source_images": [
+    {
+      "filename": "photo2.jpg",
+      "original_name": "photo2.jpg",
+      "rotation_ccw": 0,
+      "strip_count": 5
+    }
+  ]
+}
