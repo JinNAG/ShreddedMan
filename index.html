@@ -64,7 +64,7 @@
     display: flex;
   }
 
-  /* ---- Sidebar ---- */
+  /* ---- Left Sidebar ---- */
   .sidebar {
     background: #bfe0f7;
     width: 220px;
@@ -141,7 +141,6 @@
     font-size: 13px;
     font-weight: bold;
   }
-
   /* ---- Main content ---- */
   .content {
     flex: 1;
@@ -164,18 +163,29 @@
     align-items: flex-start;
     margin-bottom: 40px;
   }
-  .screenshot-placeholder {
-    width: 420px;
-    height: 260px;
-    background: #cfd8e3;
-    border: 2px dashed #8896a6;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    color: #556;
-    flex-shrink: 0;
-  }
+.screenshot-placeholder {
+  width: 420px;
+  height: 500px;
+  background: #cfd8e3;
+  border: 2px dashed #8896a6;
+  font-size: 13px;
+  color: #556;
+  flex-shrink: 0;
+
+  display: flex;
+  flex-direction: column; 
+  justify-content: center; 
+  align-items: center;     
+  gap: 16px;               
+}
+
+
+.screenshot-placeholder button {
+  width: 60%; 
+  padding: 10px;
+}
+
+
   .feature-links a {
     display: block;
     color: #1a2a6c;
@@ -244,7 +254,7 @@
         Am I in your area?
       </div>
       <div class="zip-form">
-        <input type="text" placeholder="zipcode">
+        <input type="text" maxlength="5" placeholder="zipcode">
         <button>go</button>
       </div>
 
@@ -259,23 +269,22 @@
       <p class="subhead">Alburquerque's preeminent legal service provider.</p>
 
       <div class="feature-row">
-        <div class="screenshot-placeholder">[ PRODUCT SCREENSHOT PLACEHOLDER ]</div>
+       <div class="screenshot-placeholder">
+            <p>Drag & drop or select your image</p>
+  
+ 
+         <form action="/upload" method="POST" enctype="multipart/form-data">
+            <input
+                type="file"
+                id="imageUpload"
+                name="ImageTest"
+                accept="image/png"
+            />
+             <button type="submit">Submit</button>
+        </form>
+    </div>
 
-        <div class="feature-links">
-          <a href="#">See the Blazing Speed...</a>
-          <a href="#">Explore Broadband Programming and Applications...</a>
-
-          <h3>Enjoy the benefits</h3>
-          <ul>
-            <li>Instant Ease – easy to use</li>
-            <li>Instant Access – always on, no dialing in, no disconnects, no waiting</li>
-            <li>Instant Choice – the fastest, smartest, easiest way to get around</li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="bottom-mascot-placeholder">[ MASCOT PLACEHOLDER ]</div>
-
+    </div>
       <footer>
         Saul Goodman is a registered trademark of Sony Pictures Television Inc.
       </footer>
