@@ -52,12 +52,8 @@ return res.status(400).send("No image was uploaded.");
 }
 
 console.log("Uploaded:", req.file.filename);
+res.status(200).send("Upload successful");
 
-res.send(`
-<h1>Upload successful!</h1>
-<p>Your image was stored as ${req.file.filename}</p>
-/Go back</a>
-`);
 });
  
 app.listen(PORT, () => {

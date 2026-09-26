@@ -282,7 +282,10 @@ margin: 40px 0;
             <p>Drag & drop or select your image</p>
   
  
-         <form action="/upload" method="POST" enctype="multipart/form-data">
+         <form id = "uploadForm"
+               action="/upload" 
+               method="POST" 
+               nctype="multipart/form-data">
             <input
                 type="file"
                 id="Upload"
@@ -292,7 +295,7 @@ margin: 40px 0;
              <button type="submit">Submit</button>
         </form>
 
-        
+        <p id="uploadStatus"></p>
     </div>
     <hr class="content-line">
 
@@ -312,6 +315,44 @@ margin: 40px 0;
     </div>
 
   </div>
+/*
+Server Script
+
+*/
+<script>
+const form = document.getElementById("uploadForm");
+const status = document.getElementById("uploadStatus");
+
+form.addEventListener("submit", async (event) =>{
+  event.preventDefault();
+
+  const formData = new FormData(form);
+
+  status.textContent = "Uploading...";
+
+  try {
+    const response = await fetch("/upload", {
+
+      method:"POST",
+      body: formData
+    });
+
+    if(response.ok){
+      status.textContent = "Image uploaded Successfully!";
+      form.reset();
+    }else{
+      status.textContent = "Upload failed.";
+    }
+  }catch (error){
+    console.error(error);
+    status.textContent = "Upload failed";
+  }
+});
+</script>
+
+
+
+
 
 </body>
 </html>
