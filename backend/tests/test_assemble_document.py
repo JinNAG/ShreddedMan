@@ -1,9 +1,11 @@
 from contextlib import redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
 import shutil
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -14,8 +16,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from assemble_document import assemble_document, process_submission, orient_photo
-from detect_paper import detect_submission
+from assemble_document import assemble_document, process_submission
+from detect_paper import detect_submission, orient_photo
 from normalize_strips import normalize_submission
 from sort_strips import sort_strips, sort_submission
 from submission import create_submission, Submission
@@ -32,6 +34,35 @@ def source_photo(seed):
 
 
 class DocumentAssemblyTests(unittest.TestCase):
+    def test_cli_default_storage_survives_backend_move_and_different_working_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            backend = root / "backend"
+            shutil.copytree(Path(__file__).resolve().parents[1] / "src", backend / "src",
+                            ignore=shutil.ignore_patterns("__pycache__"))
+            outside = root / "elsewhere"
+            outside.mkdir()
+            source = root / "upload.png"
+            self.assertTrue(cv2.imwrite(str(source), source_photo(1)))
+            for cwd in (root, backend, outside):
+                with self.subTest(cwd=cwd.name):
+                    before = set((backend / "img").glob("*"))
+                    run = subprocess.run(
+                        [sys.executable, "-B", os.path.relpath(backend / "src/main.py", cwd),
+                         os.path.relpath(source, cwd), "--ocr", "off"],
+                        cwd=cwd, capture_output=True, text=True, timeout=30,
+                    )
+                    self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+                    created = set((backend / "img").glob("*")) - before
+                    self.assertEqual(len(created), 1)
+                    submission = Submission(created.pop())
+                    self.assertEqual(submission.read_manifest()["status"], "complete")
+                    self.assertEqual(len(submission.read_manifest()["strips"]), 2)
+                    self.assertEqual({p.name for p in submission.final_document.iterdir()},
+                                     {"document.png", "join_report.html", "join_report.json"})
+            self.assertFalse((root / "img").exists())
+            self.assertFalse((outside / "img").exists())
+
     def test_auto_rotation_makes_horizontal_strips_vertical(self):
         upright = source_photo(1)
         sideways = cv2.rotate(upright, cv2.ROTATE_90_CLOCKWISE)
@@ -55,7 +86,7 @@ class DocumentAssemblyTests(unittest.TestCase):
                 self.assertTrue(cv2.imwrite(str(path), image))
             originals = [path.read_bytes() for path in paths]
             with redirect_stdout(io.StringIO()):
-                report = assemble_document(paths, img_root=root / "img")
+                report = assemble_document(paths, img_root=root / "img", ocr_mode="off")
             submission = Submission(Path(report["submission_dir"]))
             self.assertEqual(uuid.UUID(submission.directory.name).version, 4)
             self.assertEqual(len(report["order"]), 4)
@@ -69,13 +100,24 @@ class DocumentAssemblyTests(unittest.TestCase):
                 self.assertEqual({p.name for p in folder.iterdir()}, {f"strip{n}.png" for n in range(1, 5)})
             self.assertEqual([path.read_bytes() for path in paths], originals)
             self.assertEqual([p.read_bytes() for p in submission.sources()], originals)
-            self.assertEqual([p.name for p in submission.final_document.iterdir()], ["document.png"])
+            self.assertEqual({p.name for p in submission.final_document.iterdir()}, {"document.png", "join_report.html", "join_report.json"})
             self.assertIsNotNone(cv2.imread(str(submission.directory / report["result"])))
             saved = json.loads(submission.order_path.read_text())
             for item in saved["order"]:
                 self.assertTrue((submission.directory / item["source_path"]).is_file())
                 self.assertTrue((submission.directory / item["source_image"]).is_file())
             self.assertEqual(submission.read_manifest()["status"], "complete")
+            self.assertEqual(submission.read_manifest()["join_report"], "final_document/join_report.html")
+            # Regenerating either upstream stage must remove stale confidence
+            # reports together with the old document.
+            with redirect_stdout(io.StringIO()):
+                normalize_submission(submission.directory)
+                self.assertEqual(list(submission.final_document.iterdir()), [])
+                self.assertNotIn("join_report", submission.read_manifest())
+                sort_submission(submission.directory, ocr_mode="off")
+                detect_submission(submission.directory)
+            self.assertEqual(list(submission.final_document.iterdir()), [])
+            self.assertNotIn("join_report", submission.read_manifest())
 
     def test_submissions_are_isolated_and_uuid_collision_is_retried(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -97,21 +139,21 @@ class DocumentAssemblyTests(unittest.TestCase):
             source = root / "source.png"
             cv2.imwrite(str(source), source_photo(1))
             with redirect_stdout(io.StringIO()):
-                first = assemble_document([source], root / "img")
+                first = assemble_document([source], root / "img", ocr_mode="off")
                 submission = Submission(Path(first["submission_dir"]))
                 cv2.imwrite(str(submission.source_images / "added.PNG"), source_photo(2))
-                second = process_submission(submission.directory)
+                second = process_submission(submission.directory, ocr_mode="off")
                 self.assertEqual(len(second["order"]), 4)
                 (submission.source_images / "added.PNG").unlink()
-                third = process_submission(submission.directory)
+                third = process_submission(submission.directory, ocr_mode="off")
             self.assertEqual(len(third["order"]), 2)
             for folder in (submission.cropped_strips, submission.normalized_strips):
                 self.assertEqual({p.name for p in folder.iterdir()}, {"strip1.png", "strip2.png"})
-            self.assertEqual([p.name for p in submission.final_document.iterdir()], ["document.png"])
+            self.assertEqual({p.name for p in submission.final_document.iterdir()}, {"document.png", "join_report.html", "join_report.json"})
             self.assertEqual(len(list((root / "img").iterdir())), 1)
             (submission.source_images / "source.png").unlink()
             with self.assertRaisesRegex(ValueError, "No source images"):
-                process_submission(submission.directory)
+                process_submission(submission.directory, ocr_mode="off")
             self.assertEqual(submission.read_manifest()["status"], "failed")
             self.assertNotIn("result", submission.read_manifest())
 
@@ -128,7 +170,7 @@ class DocumentAssemblyTests(unittest.TestCase):
             moved.parent.mkdir()
             shutil.move(str(submission.directory), moved)
             with redirect_stdout(io.StringIO()):
-                report = sort_submission(moved)
+                report = sort_submission(moved, ocr_mode="off")
             self.assertTrue((moved / report["result"]).is_file())
             for item in report["order"]:
                 self.assertTrue((moved / item["source_path"]).is_file())
@@ -145,7 +187,7 @@ class DocumentAssemblyTests(unittest.TestCase):
             before = {p.name: p.read_bytes() for p in submission.cropped_strips.iterdir()}
             (submission.source_images / "z.png").write_bytes(b"not an image")
             with redirect_stdout(io.StringIO()), self.assertRaisesRegex(ValueError, "Could not open"):
-                process_submission(submission.directory)
+                process_submission(submission.directory, ocr_mode="off")
             self.assertEqual({p.name: p.read_bytes() for p in submission.cropped_strips.iterdir()}, before)
             self.assertEqual(submission.read_manifest()["status"], "failed")
             self.assertEqual(list(submission.final_document.iterdir()), [])
@@ -162,7 +204,7 @@ class DocumentAssemblyTests(unittest.TestCase):
                 normalize_submission(submission.directory)
             (submission.normalized_strips / "strip2.png").unlink()
             with self.assertRaisesRegex(ValueError, "rerun normalization"):
-                sort_submission(submission.directory)
+                sort_submission(submission.directory, ocr_mode="off")
 
     def test_repeated_input_directory_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
