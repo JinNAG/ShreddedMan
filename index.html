@@ -1,38 +1,285 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My First Website</title>
-    <!-- Link to an external CSS stylesheet if you have one -->
-    <link rel="stylesheet" href="styles.css">
+<meta charset="UTF-8">
+<title>ShreddedMan</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Verdana, Arial, sans-serif;
+    background: #d6f0fb;
+    color: #1a2a6c;
+  }
+
+  /* ---- Top banner ---- */
+  .top-banner {
+    background: #e8fbff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 30px;
+  }
+  .logo-placeholder {
+    width: 260px;
+    height: 60px;
+    background: #cfd8e3;
+    border: 2px dashed #8896a6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #556;
+    font-size: 12px;
+    font-weight: bold;
+  }
+  .tagline {
+    color: #f5921b;
+    font-weight: bold;
+    font-style: italic;
+    font-size: 26px;
+  }
+  .banner-ad-placeholder {
+    width: 180px;
+    height: 60px;
+    background: #a9c6e8;
+    border: 2px dashed #6f8fb5;
+  }
+
+  /* ---- Nav bar ---- */
+  .nav-bar {
+    background: #a87704d1;
+    padding: 12px 30px;
+    font-weight: bold;
+    font-size: 14px;
+  }
+  .nav-bar a {
+    color: #000000d1;
+    text-decoration: none;
+    margin-right: 8px;
+  }
+  .nav-bar a:hover { text-decoration: underline; }
+  .nav-bar .highlight { color: #cc0000; }
+
+  /* ---- Layout ---- */
+  .page {
+    display: flex;
+  }
+
+  /* ---- Sidebar ---- */
+  .sidebar {
+    background: #bfe0f7;
+    width: 220px;
+    padding: 25px 20px;
+    min-height: 700px;
+  }
+  .sidebar ul {
+    list-style: none;
+    margin-bottom: 30px;
+  }
+  .sidebar li { margin-bottom: 10px; }
+  .sidebar a {
+    color: #1a2a6c;
+    text-decoration: underline;
+    font-weight: bold;
+    font-size: 14px;
+  }
+
+  .mascot-placeholder {
+    width: 140px;
+    height: 160px;
+    background: #cfd8e3;
+    border: 2px dashed #8896a6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #556;
+    margin: 20px 0;
+  }
+
+  .availability-box {
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+  .zip-form input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 6px;
+  border: 1px solid #8896a6;
+}
+  .zip-form input[type="text"] {
+    flex: 1;
+    padding: 6px;
+    border: 1px solid #8896a6;
+  }
+  .zip-form button {
+    background: #f5921b;
+    border: none;
+    border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    color: white;
+    font-weight: bold;
+    margin-left: 6px;
+    cursor: pointer;
+  }
+
+  .signup-btn {
+    color: #cc0000;
+    font-weight: bold;
+    font-style: italic;
+    font-size: 20px;
+    margin-bottom: 10px;
+  }
+  .contest-box {
+    background: #dceefb;
+    border: 1px solid #8896a6;
+    padding: 12px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: bold;
+  }
+
+  /* ---- Main content ---- */
+  .content {
+    flex: 1;
+    padding: 30px 40px;
+  }
+  .content h1 {
+    color: #f5921b;
+    font-style: italic;
+    font-size: 32px;
+    margin-bottom: 4px;
+  }
+  .content .subhead {
+    font-size: 14px;
+    margin-bottom: 30px;
+  }
+
+  .feature-row {
+    display: flex;
+    gap: 40px;
+    align-items: flex-start;
+    margin-bottom: 40px;
+  }
+  .screenshot-placeholder {
+    width: 420px;
+    height: 260px;
+    background: #cfd8e3;
+    border: 2px dashed #8896a6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: #556;
+    flex-shrink: 0;
+  }
+  .feature-links a {
+    display: block;
+    color: #1a2a6c;
+    font-weight: bold;
+    text-decoration: underline;
+    margin-bottom: 6px;
+    font-size: 15px;
+  }
+  .feature-links h3 {
+    margin-top: 20px;
+    font-size: 15px;
+  }
+  .feature-links ul {
+    margin: 10px 0 0 20px;
+    font-size: 14px;
+  }
+  .feature-links li { margin-bottom: 6px; }
+
+  .bottom-mascot-placeholder {
+    width: 260px;
+    height: 160px;
+    background: #cfd8e3;
+    border: 2px dashed #8896a6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #556;
+    margin: 20px 0 10px;
+  }
+
+  footer {
+    font-size: 11px;
+    color: #445;
+  }
+</style>
 </head>
 <body>
 
-    <header>
-        <h1>Welcome to My Website</h1>
-        <p>This is the main homepage (index.html).</p>
-    </header>
+  <div class="top-banner">
+    <div class="logo-placeholder"><img alt="logo image" src="Better_Call_Saul_logo.png" style="width:100%;"></div>
+    <div class="tagline">Experience the Power of the Goodman Recovery!</div>
+    <div class="banner-ad-placeholder"></div>
+  </div>
 
-    <main>
-        <section>
-            <h2>About This Page</h2>
-            <p>HTML structures the content of the web page. You can add text, links, images, and lists here.</p>
-        </section>
+  <div class="nav-bar">
+    <a href="#">WHO I AM</a> ·
+    <a href="#">WHAT I DO</a> ·
+    <a href="#">AVAILABILITY</a> ·
+    <a href="#" class="highlight">JOBS!</a>
+  </div>
 
-        <section>
-            <h2>Useful Links</h2>
-            <ul>
-                <li>Visit <a href="https://developer.mozilla.org" target="_blank">MDN Web Docs</a> for documentation.</li>
-                <li>Check out <a href="https://www.w3schools.com" target="_blank">W3Schools</a> for tutorials.</li>
-            </ul>
-        </section>
-    </main>
+  <div class="page">
 
-    <footer>
-        <p>&copy; 2026 My Web Project</p>
-    </footer>
+    <div class="sidebar">
+      <ul>
+        <li><a href="#">Criminal Defence</a></li>
+        <li><a href="#">Public Defense</a></li>
+        <li><a href="#">Financial Advice</a></li>
+
+      </ul>
+
+      <div class="mascot-placeholder">[ MASCOT / ICON ]</div>
+
+      <div class="availability-box">
+        Am I in your area?
+      </div>
+      <div class="zip-form">
+        <input type="text" placeholder="zipcode">
+        <button>go</button>
+      </div>
+
+      <div class="signup-btn">Get Services Now!</div>
+      <div class="contest-box">
+        I want to be a<br>Millionth Customer<br>Contest
+      </div>
+    </div>
+
+    <div class="content">
+      <h1>Welcome</h1>
+      <p class="subhead">Alburquerque's preeminent legal service provider.</p>
+
+      <div class="feature-row">
+        <div class="screenshot-placeholder">[ PRODUCT SCREENSHOT PLACEHOLDER ]</div>
+
+        <div class="feature-links">
+          <a href="#">See the Blazing Speed...</a>
+          <a href="#">Explore Broadband Programming and Applications...</a>
+
+          <h3>Enjoy the benefits</h3>
+          <ul>
+            <li>Instant Ease – easy to use</li>
+            <li>Instant Access – always on, no dialing in, no disconnects, no waiting</li>
+            <li>Instant Choice – the fastest, smartest, easiest way to get around</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="bottom-mascot-placeholder">[ MASCOT PLACEHOLDER ]</div>
+
+      <footer>
+        Saul Goodman is a registered trademark of Sony Pictures Television Inc.
+      </footer>
+    </div>
+
+  </div>
 
 </body>
 </html>
