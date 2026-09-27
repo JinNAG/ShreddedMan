@@ -73,12 +73,6 @@ app.post("/upload", upload.single("ImageUpload"), (req, res) => {
     console.log("Uploaded:", req.file.filename);
     res.status(200).send("Upload successful");
 
-
-
-
-
-
-
 });
 
 app.listen(PORT, () => {
