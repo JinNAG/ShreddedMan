@@ -367,6 +367,46 @@
       max-width: 100%;
       max-height: 100%;
       object-fit: contain;
+      cursor: zoom-in;
+    }
+
+    .image-dialog {
+      position: fixed;
+      max-width: 96vw;
+      max-height: 96vh;
+      max-width: 96dvw;
+      max-height: 96dvh;
+      margin: auto;
+      padding: 48px 16px 16px;
+      border: 1px solid #6f6457;
+      background: #efe6d6;
+    }
+
+    .image-dialog::backdrop {
+      background: rgb(0 0 0 / 82%);
+    }
+
+    .image-dialog img {
+      display: block;
+      max-width: calc(96vw - 34px);
+      max-height: calc(96vh - 82px);
+      max-width: calc(96dvw - 34px);
+      max-height: calc(96dvh - 82px);
+      object-fit: contain;
+    }
+
+    .image-dialog button {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 32px;
+      height: 32px;
+      border: 1px solid #6f6457;
+      background: #fffdf8;
+      color: #1f2d2d;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
     }
 
     .original-images {
@@ -504,6 +544,10 @@
             <a id="downloadImage" class="download-link" download="reconstructed-document.png" hidden>Download processed image</a>
           </div>
         </div>
+        <dialog id="imageDialog" class="image-dialog" aria-label="Enlarged reconstructed image">
+          <button id="closeImageDialog" type="button" aria-label="Close enlarged image">&times;</button>
+          <img id="enlargedImage" alt="Enlarged reconstructed document">
+        </dialog>
         <footer>
           Saul Goodman is a registered trademark of Sony Pictures Television Inc.
         </footer>
@@ -524,9 +568,22 @@ Server Script
       const editedMessage = document.getElementById("editedMessage");
       const editedImage = document.getElementById("editedImage");
       const downloadImage = document.getElementById("downloadImage");
+      const imageDialog = document.getElementById("imageDialog");
+      const enlargedImage = document.getElementById("enlargedImage");
+      const closeImageDialog = document.getElementById("closeImageDialog");
       const submitButton = form.querySelector('button[type="submit"]');
       let submitting = false;
       let originalImageURLs = [];
+
+      editedImage.addEventListener("click", () => {
+        if (!editedImage.src) return;
+        enlargedImage.src = editedImage.src;
+        imageDialog.showModal();
+      });
+      closeImageDialog.addEventListener("click", () => imageDialog.close());
+      imageDialog.addEventListener("click", (event) => {
+        if (event.target === imageDialog) imageDialog.close();
+      });
 
       async function requestJSON(url, options = {}) {
         const response = await fetch(url, {

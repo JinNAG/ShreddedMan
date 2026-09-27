@@ -82,6 +82,7 @@ function browser() {
   let submit;
   const button = { disabled: false };
   const messages = [];
+  const listeners = {};
   const nodes = {
     uploadForm: {
       addEventListener(name, listener) { if (name === "submit") submit = listener; },
@@ -103,6 +104,7 @@ function browser() {
     },
     editedImage: {
       style: { display: "none" },
+      addEventListener(name, listener) { listeners.editedImage = listener; },
       removeAttribute(name) { delete this[name]; },
       async decode() {
         assert.equal(this.style.display, "none", "Keep incomplete results hidden");
@@ -111,6 +113,16 @@ function browser() {
         assert.equal(response.headers.get("content-type"), "image/png");
         assert.deepEqual(Buffer.from(await response.arrayBuffer()), imageBytes);
       }
+    },
+    imageDialog: {
+      open: false,
+      addEventListener(name, listener) { listeners.imageDialog = listener; },
+      showModal() { this.open = true; },
+      close() { this.open = false; }
+    },
+    enlargedImage: {},
+    closeImageDialog: {
+      addEventListener(name, listener) { listeners.closeImageDialog = listener; }
     },
     downloadImage: {
       hidden: true,
@@ -133,7 +145,13 @@ function browser() {
     },
     setTimeout: callback => setTimeout(callback, 1)
   });
-  return { nodes, button, messages, submit: () => submit({ preventDefault() {} }) };
+  return {
+    nodes, button, messages,
+    submit: () => submit({ preventDefault() {} }),
+    clickEditedImage: () => listeners.editedImage(),
+    closeImageDialog: () => listeners.closeImageDialog(),
+    clickDialogBackdrop: () => listeners.imageDialog({ target: nodes.imageDialog })
+  };
 }
 
 test("all photos reach one submission and the finished PNG appears in Edited Image", async () => {
@@ -159,6 +177,19 @@ test("all photos reach one submission and the finished PNG appears in Edited Ima
   assert.equal(page.nodes.downloadImage.hidden, false);
   assert.ok(page.messages.includes("Sorting strips and reconstructing your document..."));
   assert.equal(page.button.disabled, false);
+});
+
+test("clicking the finished image opens and closes its enlarged view", async () => {
+  const page = browser();
+  await page.submit();
+  page.clickEditedImage();
+  assert.equal(page.nodes.imageDialog.open, true);
+  assert.equal(page.nodes.enlargedImage.src, documentURL);
+  page.closeImageDialog();
+  assert.equal(page.nodes.imageDialog.open, false);
+  page.clickEditedImage();
+  page.clickDialogBackdrop();
+  assert.equal(page.nodes.imageDialog.open, false);
 });
 
 test("a later failed job hides the old image and displays the backend error", async () => {
