@@ -1,13 +1,35 @@
 """Score reconstructed cuts using visible strokes and local OCR evidence."""
 
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
+import gzip
+from pathlib import Path
+import re
 import threading
 
 import cv2
 import numpy as np
 
-from strip_matching import strip_ink
+from strip_matching import refine_row_maps_from_ink, stabilize_row_maps, strip_ink
 from strip_ocr import DEFAULT_OCR_WORKERS
+
+
+@lru_cache(maxsize=1)
+def _english_words() -> frozenset[str]:
+    """A local public-domain word list for reviewing complete English words."""
+    path = Path(__file__).with_name("english_words.txt.gz")
+    with gzip.open(path, "rt", encoding="utf-8") as source:
+        return frozenset(line.strip() for line in source
+                         if line.strip() and not line.startswith("#"))
+
+
+def _lexical_ratio(words: list[dict]) -> tuple[float | None, int]:
+    tokens = [re.sub("[^a-z]", "", word["text"].lower()) for word in words]
+    tokens = [token for token in tokens if len(token) >= 4]
+    if not tokens:
+        return None, 0
+    vocabulary = _english_words()
+    return sum(token in vocabulary for token in tokens) / len(tokens), len(tokens)
 
 
 def measure_seam(ink: np.ndarray, seam: int, words: list[dict]) -> dict:
@@ -99,6 +121,9 @@ class JoinVerifier:
                 mapping[outside] = warp[endpoint] + (previous[outside] - rows[endpoint]) * slope
             maps.append(mapping)
         if full_page:
+            if hasattr(self.matches, "scores"):
+                maps = stabilize_row_maps(order, maps, self.warps, self.matches.scores)
+                maps = refine_row_maps_from_ink(order, maps, self.inks)
             def extend(points, coordinates, values):
                 result = np.interp(points, coordinates, values)
                 for endpoint, neighbor, outside in ((0, 1, points < coordinates[0]),
@@ -210,11 +235,25 @@ class JoinVerifier:
         words = [{**word, "box": [word["box"][0] - 10, word["box"][1] - 10, *word["box"][2:]]}
                  for word in self.ocr.recognize(gray)]
         evidence = [measure_seam(ink, int(seam), words) for seam in seams]
+        lexical_joins = []
+        if self.ocr.language == "eng":
+            for position, item in enumerate(evidence, 1):
+                ratio, count = _lexical_ratio(item["fragments"])
+                item["lexical_word_ratio"] = ratio
+                item["lexical_word_count"] = count
+                if count >= 10 and ratio is not None and ratio < 0.3:
+                    lexical_joins.append(position)
+        lexical_score, lexical_count = _lexical_ratio(words) if self.ocr.language == "eng" else (None, 0)
+        ink_score = float(np.mean([item["ocr_score"] for item in evidence])) if evidence else 0.0
+        use_lexicon = lexical_score is not None and lexical_count >= max(30, len(seams) * 5)
         result = {
-            "score": float(np.mean([item["ocr_score"] for item in evidence])) if evidence else 0.0,
+            "score": 0.6 * ink_score + 0.4 * lexical_score if use_lexicon else ink_score,
+            "ocr_ink_score": ink_score,
             "ink_coverage": float(np.mean([item["ink_coverage"] for item in evidence])) if evidence else 0.0,
             "recognized_tokens": len(words), "text": " ".join(word["text"] for word in words),
             "seams": evidence, "analysis_height": ink.shape[0],
+            "lexical_word_ratio": lexical_score, "lexical_word_count": lexical_count,
+            "lexical_suspect_joins": lexical_joins, "lexicon_used": use_lexicon,
         }
         self.document_cache[order] = result
         return result
@@ -300,7 +339,7 @@ def refine_orders(ranked, scores, verifier, rounds=4, proposals_per_round=24):
     return result, metadata
 
 
-def verify_document_orders(ranked, pair_ranked, verifier):
+def verify_document_orders(ranked, pair_ranked, verifier, pair_scores=None):
     """Use whole-page OCR to choose among context finalists and the baseline.
 
     Keeping the pairwise baseline in the comparison prevents local context
@@ -313,23 +352,82 @@ def verify_document_orders(ranked, pair_ranked, verifier):
     orders = list(dict.fromkeys([baseline, *[order for _, order in ranked[:3]]]))
     with ThreadPoolExecutor(max_workers=verifier.workers) as pool:
         readings = list(pool.map(verifier.evaluate_document, orders))
+
+    def weak_joins(reading):
+        weak = {i for i, item in enumerate(reading["seams"], 1)
+                if item["ocr_score"] < 0.55 or item["ink_coverage"] < 0.5
+                or item["recognized_lines"] < 3}
+        return sorted(weak | set(reading.get("lexical_suspect_joins", [])))
+
+    # A high pair score can hide several broken cuts in an otherwise plausible
+    # path. Move intact groups across the cuts flagged by complete-page OCR,
+    # then let complete-page OCR judge the small set of resulting orders.
+    repair_rounds = repair_candidates_checked = 0
+    if pair_scores is not None:
+        for _ in range(8):
+            selected = min(range(len(orders)), key=lambda i: (-readings[i]["score"],
+                                                              orders[i] != baseline, orders[i]))
+            current, reading = orders[selected], readings[selected]
+            lexical_suspect = reading.get("lexical_suspect_joins", [])
+            suspect = lexical_suspect if len(lexical_suspect) >= 2 else weak_joins(reading)
+            if len(suspect) < 2 or reading["score"] >= 0.7:
+                break
+            suspect_edges = {(current[i - 1], current[i]) for i in suspect}
+
+            def priority(candidate):
+                changed = len(suspect_edges - set(zip(candidate, candidate[1:])))
+                pair_mean = sum(float(pair_scores[a, b]) for a, b in zip(candidate, candidate[1:])) / (len(candidate) - 1)
+                return (-changed, -pair_mean, candidate)
+
+            proposals = set(order_neighbors(current))
+            # A true neighbor can have a poor two-strip OCR score when its
+            # letters need context from both sides. Joining a promising pair
+            # and moving it into a weak cut lets full-page OCR test that
+            # coordinated change directly, without requiring a bad
+            # intermediate page to win a greedy round.
+            if reading["score"] < 0.55:
+                for a in current:
+                    successors = sorted((b for b in current if b != a),
+                                        key=lambda b: (-pair_scores[a, b], b))[:4]
+                    for b in successors:
+                        remaining = [item for item in current if item not in (a, b)]
+                        for position in suspect:
+                            left = current[position - 1]
+                            if left in (a, b):
+                                continue
+                            destination = remaining.index(left) + 1
+                            proposals.add(tuple(remaining[:destination] + [a, b] + remaining[destination:]))
+            proposals = [candidate for candidate in proposals
+                         if candidate not in verifier.document_cache
+                         and len(suspect_edges - set(zip(candidate, candidate[1:]))) >= 2]
+            candidates = sorted(proposals, key=priority)[:48]
+            if not candidates:
+                break
+            with ThreadPoolExecutor(max_workers=verifier.workers) as pool:
+                checked = list(pool.map(verifier.evaluate_document, candidates))
+            orders.extend(candidates)
+            readings.extend(checked)
+            repair_rounds += 1
+            repair_candidates_checked += len(candidates)
+            if max(item["score"] for item in checked) <= reading["score"] + 1e-9:
+                break
     # On a tie, retain the pairwise baseline instead of making an unsupported
     # change. Every candidate includes every strip exactly once.
     selected = min(range(len(orders)), key=lambda i: (-readings[i]["score"], orders[i] != baseline, orders[i]))
     final_order, final = orders[selected], readings[selected]
     count = len(final_order) - 1
     result = sorted(((reading["score"] * count, order) for order, reading in zip(orders, readings)),
-                    key=lambda item: (-item[0], item[1] != baseline, item[1]))
+                    key=lambda item: (-item[0], item[1] != baseline, item[1]))[:5]
     summary = {key: value for key, value in final.items() if key != "seams"}
     return result, {
-        "enabled": True, "method": "Full-page OCR ink evidence at every join; no dictionary correction.",
-        "score_note": "Heuristic readability evidence, not an accuracy percentage or proof of a correct order.",
+        "enabled": True, "method": "Full-page OCR ink evidence and English word plausibility when enough text is available.",
+        "score_note": "Heuristic readability evidence, not an accuracy percentage or proof of a correct order. English word checks only rank candidates; source pixels and OCR text are not corrected.",
         "baseline_order": list(baseline), "selected_order": list(final_order),
         "baseline_score": readings[0]["score"], "final_score": final["score"],
         "changed_from_pairwise": final_order != baseline, "evaluated_orders": len(orders),
+        "repair_rounds": repair_rounds, "repair_candidates_checked": repair_candidates_checked,
         "candidates": [{"order": list(order), "score": reading["score"], "ink_coverage": reading["ink_coverage"]}
                        for order, reading in zip(orders, readings)],
-        "suspect_joins": [i for i, item in enumerate(final["seams"], 1)
-                          if item["ocr_score"] < 0.55 or item["ink_coverage"] < 0.5 or item["recognized_lines"] < 3],
+        "suspect_joins": weak_joins(final),
         "final_reading": summary,
     }
