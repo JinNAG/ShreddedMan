@@ -36,6 +36,7 @@ def process_submission(
         manifest.pop("error", None)
         manifest.pop("result", None)
         manifest.pop("join_report", None)
+        manifest.pop("review_required", None)
         manifest.pop("timings_seconds", None)
         manifest.pop("sorting_timings_seconds", None)
         submission.save_manifest(manifest)
@@ -59,6 +60,7 @@ def process_submission(
         manifest.update(status="failed", error=str(error))
         manifest.pop("result", None)
         manifest.pop("join_report", None)
+        manifest.pop("review_required", None)
         submission.save_manifest(manifest)
         raise
     return {**report, "submission_dir": str(submission.directory)}

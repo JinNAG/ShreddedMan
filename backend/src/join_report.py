@@ -166,6 +166,8 @@ def write_join_reports(output_dir, report, verifier, order):
                        f'<p><strong>Other right-neighbor candidates:</strong> {alternatives}</p></section>')
     counts = ", ".join(f"{count} {level}" for level, count in sorted(report["summary"].items())) or "No joins (one text strip)."
     check = report["document_check"]
+    review_note = (" ".join(report.get("review_reasons", []))
+                   if report.get("review_required") else "No broad review warning was triggered.")
     document_section = ""
     if check["enabled"]:
         suspects = ", ".join(f'<a href="#join-{i}">{i} → {i + 1}</a>' for i in check["suspect_joins"]) or "None flagged."
@@ -183,6 +185,7 @@ th{{background:#e9edf3}}.high{{color:#17613b}}.medium{{color:#855900}}.low{{colo
 .evidence{{float:right;max-width:42%;width:260px;margin:0 0 12px 20px;image-rendering:auto}}section::after{{content:"";display:block;clear:both}}
 .note{{background:#fff5d7;padding:16px;border-left:4px solid #ba8700}}.table{{overflow-x:auto}}@media(max-width:650px){{body{{padding:16px}}.evidence{{float:none;max-width:100%;margin:0}}}}
 </style><h1>Strip join verification</h1><p>{esc(counts)}. <a href="document.png">Open assembled document</a> · <a href="join_report.json">Full JSON evidence</a></p>
+<p class="note">{esc(review_note)}</p>
 <p class="note">{esc(CONFIDENCE_NOTE)}</p><p>{esc(report["position_numbering"])}</p>
 <p>OCR: {esc(report["ocr"]["status"])} ({esc(report["ocr"].get("version") or report["ocr"].get("reason"))}).
 Dictionary correction is disabled. OCR evidence includes unread ink; raw recognition confidence alone is not a join confidence.</p>

@@ -19,6 +19,19 @@ from submission import write_json
 DEFAULT_OCR_WORKERS = min(8, max(1, os.cpu_count() or 1))
 
 
+def parse_tesseract_tsv(output: str) -> list[dict]:
+    """Read Tesseract's unquoted TSV without treating quote glyphs as syntax."""
+    words = []
+    for row in csv.DictReader(io.StringIO(output), delimiter="\t", quoting=csv.QUOTE_NONE):
+        if row["level"] != "5" or not row["text"].strip():
+            continue
+        words.append({
+            "text": row["text"], "confidence": float(np.clip(float(row["conf"]) / 100, 0, 1)),
+            "box": [int(row[name]) for name in ("left", "top", "width", "height")],
+        })
+    return words
+
+
 class TesseractOCR:
     def __init__(self, mode="auto", language="eng", cache_path: Path | None = None):
         if mode not in ("auto", "required", "off"):
@@ -64,7 +77,7 @@ class TesseractOCR:
         if not self.enabled:
             return []
         key = hashlib.sha256(
-            f"v1|{self.version}|{self.language}|psm6|no-dictionaries|{gray.shape}".encode() + gray.tobytes()
+            f"v2|{self.version}|{self.language}|psm6|no-dictionaries|{gray.shape}".encode() + gray.tobytes()
         ).hexdigest()
         with self.lock:
             if key in self.cache:
@@ -84,14 +97,7 @@ class TesseractOCR:
             raise RuntimeError(f"Tesseract failed: {error.stderr.decode(errors='replace').strip()}") from error
         except (OSError, subprocess.TimeoutExpired) as error:
             raise RuntimeError(f"Tesseract failed: {error}") from error
-        words = []
-        for row in csv.DictReader(io.StringIO(process.stdout.decode("utf-8")), delimiter="\t"):
-            if row["level"] != "5" or not row["text"].strip():
-                continue
-            words.append({
-                "text": row["text"], "confidence": float(np.clip(float(row["conf"]) / 100, 0, 1)),
-                "box": [int(row[name]) for name in ("left", "top", "width", "height")],
-            })
+        words = parse_tesseract_tsv(process.stdout.decode("utf-8"))
         with self.lock:
             self.calls += 1
             self.cache[key] = words
