@@ -229,6 +229,82 @@ class JoinVerifier:
             self.cache[order] = result
         return result
 
+    def line_pitch(self):
+        """Typical spacing of consecutive text lines within paragraphs, in analysis rows."""
+        gaps = []
+        for ink in self.inks:
+            changes = np.diff(np.pad(((ink > 0.2).sum(1) >= 2).astype(int), (1, 1)))
+            tops = [start for start, end in zip(np.flatnonzero(changes == 1), np.flatnonzero(changes == -1))
+                    if end - start >= 5]
+            gaps.extend(np.diff(tops))
+        gaps = np.asarray(gaps)
+        if len(gaps) < 10:
+            return None
+        # Lines inside paragraphs are the most frequent and closest spacing.
+        typical = np.percentile(gaps, 25)
+        return float(np.median(gaps[(gaps > 0.7 * typical) & (gaps < 1.3 * typical)]))
+
+    def correct_line_offsets(self, order, gain=0.05):
+        """Re-register chosen joins whose text lines are offset by about a line.
+
+        Text lines repeat down the page, so edge matching can lock onto the
+        neighboring line: along the whole strip, or only toward one end when a
+        sparse strip (such as a column of question numbers) gets the wrong
+        scale. Full-width line structure is unambiguous where paragraphs start
+        and end. Each join of the final order gets the linear top-to-bottom
+        correction, within 1.5 lines, that best overlaps its text lines. It is
+        applied only if it moves part of the strip by at least half a line and
+        clearly improves the overlap. Corrected row maps are shared with the
+        preview; cached readings of affected orders are discarded.
+        """
+        pitch = self.line_pitch()
+        if not pitch or len(order) < 2:
+            return []
+        height = self.height
+        rows = np.arange(height, dtype=np.float32)
+        position_down = rows / (height - 1)
+        lines = [cv2.GaussianBlur((ink > 0.2).mean(1).astype(np.float32)[:, None], (1, 0), sigmaX=0, sigmaY=2).ravel()
+                 for ink in self.inks]
+
+        def overlap(a, shifted):
+            return 2 * (a * shifted).sum(-1) / np.maximum((a * a).sum(-1) + (shifted * shifted).sum(-1), 1e-9)
+
+        def best_correction(a, b, warp, tops, bottoms):
+            best = (-1.0, 0.0, 0.0)
+            for top in tops:
+                corrections = top + (bottoms[:, None] - top) * position_down[None, :]
+                shifted = np.interp((warp + corrections).ravel(), rows, lines[b], left=0, right=0)
+                values = overlap(lines[a][None, :], shifted.reshape(len(bottoms), height))
+                index = int(values.argmax())
+                if values[index] > best[0]:
+                    best = (float(values[index]), float(top), float(bottoms[index]))
+            return best
+
+        step = max(1, round(pitch / 10))
+        grid = np.arange(-(round(1.5 * pitch) // step), round(1.5 * pitch) // step + 1) * step
+        corrections = []
+        for position, (a, b) in enumerate(zip(order, order[1:]), 1):
+            warp = self.warps[a, b]
+            before = float(overlap(lines[a], np.interp(warp, rows, lines[b], left=0, right=0)))
+            _, top, bottom = best_correction(a, b, warp, grid, grid.astype(np.float32))
+            fine = np.arange(-step, step + 1)
+            after, top, bottom = best_correction(a, b, warp, top + fine, (bottom + fine).astype(np.float32))
+            if max(abs(top), abs(bottom)) < 0.5 * pitch or after < before + gain:
+                continue
+            self.warps[a, b] = warp + top + (bottom - top) * position_down
+            if self.matches.warps is not self.warps:
+                original = self.matches.warps.shape[-1]
+                analysis_rows = (np.arange(original) + 0.5) * height / original - 0.5
+                self.matches.warps[a, b] += (top + (bottom - top) * analysis_rows / (height - 1)) * original / height
+            corrections.append({"join": position, "left": a, "right": b,
+                                "top_lines": top / pitch, "bottom_lines": bottom / pitch,
+                                "line_overlap_before": before, "line_overlap_after": after})
+        changed = {(item["left"], item["right"]) for item in corrections}
+        for cache in (self.cache, self.document_cache):
+            for key in [key for key in cache if changed & set(zip(key, key[1:]))]:
+                del cache[key]
+        return corrections
+
     def evaluate_many(self, orders):
         needed = sorted({tuple(order) for order in orders} - self.cache.keys())
         if needed:
