@@ -1,6 +1,10 @@
 """Score reconstructed cuts using visible strokes and local OCR evidence."""
 
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
+import gzip
+from pathlib import Path
+import re
 import threading
 
 import cv2
@@ -10,7 +14,50 @@ from strip_matching import strip_ink
 from strip_ocr import DEFAULT_OCR_WORKERS
 
 
-def measure_seam(ink: np.ndarray, seam: int, words: list[dict]) -> dict:
+WORD_LIST = Path(__file__).with_name("english_words.txt.gz")
+FRAGMENT_LENGTH = 5
+
+
+@lru_cache(maxsize=1)
+def english_fragments() -> frozenset[str]:
+    """Every five-letter sequence occurring inside a word of the bundled list.
+
+    OCR at a cut reads pieces of words, so whole-word lookup does not apply.
+    Letters spanning a correct cut continue a real word; letters spanning a
+    wrong cut rarely do, even when Tesseract reads them confidently. The
+    public-domain list lacks most inflections, so this ranks neighbors and
+    is never used to correct text.
+    """
+    with gzip.open(WORD_LIST, "rt", encoding="utf-8") as handle:
+        words = [word.lower() for word in handle.read().split() if word.isalpha()]
+    return frozenset(word[i:i + FRAGMENT_LENGTH] for word in words
+                     for i in range(len(word) - FRAGMENT_LENGTH + 1))
+
+
+def lexical_evidence(words: list[dict], fragments: frozenset[str]) -> tuple[int, int]:
+    """Count plausible and total five-letter sequences in recognized words."""
+    plausible = total = 0
+    for word in words:
+        for run in re.findall(r"[A-Za-z]+", word["text"]):
+            # A capital right after a lowercase letter joins unrelated pieces.
+            joined = re.search(r"[a-z][A-Z]", run) is not None
+            run = run.lower()
+            for i in range(len(run) - FRAGMENT_LENGTH + 1):
+                total += 1
+                plausible += not joined and run[i:i + FRAGMENT_LENGTH] in fragments
+    return plausible, total
+
+
+def text_evidence(seam: dict) -> float:
+    """Combine readable ink with English plausibility when it was measured."""
+    lexical = seam.get("lexical_score")
+    if lexical is None:
+        return seam["ocr_score"]
+    return (seam["ocr_score"] + 2 * lexical) / 3
+
+
+def measure_seam(ink: np.ndarray, seam: int, words: list[dict],
+                 fragments: frozenset[str] | None = None) -> dict:
     """Account for unread ink, rather than averaging only successful OCR hits."""
     height, width = ink.shape
     left, right = max(0, seam - 14), min(width, seam + 14)
@@ -52,11 +99,17 @@ def measure_seam(ink: np.ndarray, seam: int, words: list[dict]) -> dict:
         line_words = [word for word in crossing if word["box"][1] < end and word["box"][1] + word["box"][3] > start]
         lines.append({"y_start": int(start), "y_end": int(end), "ocr_score": score,
                       "text": " ".join(word["text"] for word in line_words)})
+    lexical_score, sequences = None, 0
+    if fragments is not None:
+        plausible, sequences = lexical_evidence(crossing, fragments)
+        # Smoothing keeps joins with little readable text near neutral.
+        lexical_score = (plausible + 1) / (sequences + 2)
     return {
         "ocr_score": evidence_score, "ocr_confidence": float(np.mean([w["confidence"] for w in crossing])) if crossing else 0.0,
         "ink_coverage": coverage, "stroke_score": float(np.clip(stroke, 0, 1)),
         "ink_pixels": pixel_count, "text_lines": len(lines), "recognized_tokens": len(crossing),
         "recognized_lines": sum(bool(line["text"]) for line in lines),
+        "lexical_score": lexical_score, "lexical_sequences": sequences,
         "fragments": crossing, "lines": lines,
     }
 
@@ -75,6 +128,8 @@ class JoinVerifier:
                 for b in range(len(images)):
                     self.warps[a, b] = (np.interp(rows, np.arange(height), matches.warps[a, b]) + 0.5) * self.height / height - 0.5
         height = self.height
+        # The bundled word list is English; other languages keep ink-only OCR evidence.
+        self.fragments = english_fragments() if ocr.enabled and getattr(ocr, "language", None) == "eng" else None
         self.workers = max(1, min(int(workers), 8))
         self.cache, self.document_cache, self.lock = {}, {}, threading.Lock()
         self.inks = []
@@ -166,7 +221,7 @@ class JoinVerifier:
                         if start <= y + height / 2 < end:
                             words.append({**word, "box": [float(x - 10), float(y - start + top), float(width), float(height)]})
                             break
-        result = {"seams": [measure_seam(analyzed_ink, int(seam), words) for seam in seams],
+        result = {"seams": [measure_seam(analyzed_ink, int(seam), words, self.fragments) for seam in seams],
                   "sampled_text_lines": sampled_lines, "available_text_lines": available_lines}
         with self.lock:
             self.cache[order] = result
@@ -183,6 +238,8 @@ class JoinVerifier:
 
         A weak visual match can be a correct join (for example, a cut through
         a wide letter). Pruning on visual rank alone excludes real solutions.
+        Body text puts ink at the same rows on every strip, so edge profiles
+        separate neighbors poorly; readable words across the cut decide more.
         """
         size = len(self.inks)
         visual = self.matches.scores
@@ -190,9 +247,10 @@ class JoinVerifier:
             return visual.copy()
         pairs = [(a, b) for a in range(size) for b in range(size) if a != b]
         self.evaluate_many(pairs)
+        weight = 0.25 if self.fragments is not None else 0.5
         scores = np.full_like(visual, -np.inf)
         for pair in pairs:
-            scores[pair] = 0.5 * visual[pair] + 0.5 * self.cache[pair]["seams"][0]["ocr_score"]
+            scores[pair] = weight * visual[pair] + (1 - weight) * text_evidence(self.cache[pair]["seams"][0])
         return scores
 
     def evaluate_document(self, order):
@@ -209,9 +267,9 @@ class JoinVerifier:
         gray = cv2.copyMakeBorder(gray, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
         words = [{**word, "box": [word["box"][0] - 10, word["box"][1] - 10, *word["box"][2:]]}
                  for word in self.ocr.recognize(gray)]
-        evidence = [measure_seam(ink, int(seam), words) for seam in seams]
+        evidence = [measure_seam(ink, int(seam), words, self.fragments) for seam in seams]
         result = {
-            "score": float(np.mean([item["ocr_score"] for item in evidence])) if evidence else 0.0,
+            "score": float(np.mean([text_evidence(item) for item in evidence])) if evidence else 0.0,
             "ink_coverage": float(np.mean([item["ink_coverage"] for item in evidence])) if evidence else 0.0,
             "recognized_tokens": len(words), "text": " ".join(word["text"] for word in words),
             "seams": evidence, "analysis_height": ink.shape[0],
@@ -267,7 +325,7 @@ def refine_orders(ranked, scores, verifier, rounds=4, proposals_per_round=24):
     def evaluate(orders):
         verifier.evaluate_many(order[i:i + 3] for order in orders for i in range(size - 2))
         for order in orders:
-            context = np.mean([seam["ocr_score"] for i in range(size - 2)
+            context = np.mean([text_evidence(seam) for i in range(size - 2)
                                for seam in verifier.cache[order[i:i + 3]]["seams"]])
             evaluated[order] = 0.25 * pair_mean(order) + 0.75 * float(context)
 
@@ -322,7 +380,8 @@ def verify_document_orders(ranked, pair_ranked, verifier):
                     key=lambda item: (-item[0], item[1] != baseline, item[1]))
     summary = {key: value for key, value in final.items() if key != "seams"}
     return result, {
-        "enabled": True, "method": "Full-page OCR ink evidence at every join; no dictionary correction.",
+        "enabled": True, "method": ("Full-page OCR evidence at every join: readable ink, plus English "
+                                    "letter-sequence plausibility when available; no text correction."),
         "score_note": "Heuristic readability evidence, not an accuracy percentage or proof of a correct order.",
         "baseline_order": list(baseline), "selected_order": list(final_order),
         "baseline_score": readings[0]["score"], "final_score": final["score"],

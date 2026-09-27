@@ -212,7 +212,10 @@ def sort_strips(
             "visual_order": [active_labels[index] for index in visual_order],
             "pairwise_order": [active_labels[index] for index in pair_ranked[0][1]],
             "order_changed_by_verification": active_order != visual_order,
-            "pair_score_weights": {"visual": 0.5, "ocr_ink_evidence": 0.5} if ocr.enabled else {"visual": 1.0},
+            "pair_score_weights": (
+                {"visual": 0.25, "ocr_ink_evidence": 0.25, "english_plausibility": 0.5} if verifier.fragments is not None
+                else {"visual": 0.5, "ocr_ink_evidence": 0.5} if ocr.enabled else {"visual": 1.0}
+            ),
             "pair_score_fallback": "All directed pairs remain available. Missing OCR evidence earns no text bonus. OCR-off mode uses all visual scores.",
             "ocr_pairs_checked": sum(len(order) == 2 for order in verifier.cache) if ocr.enabled else 0,
             "ocr_sampling": "Up to 24 text lines distributed over the full height; analysis height capped at 2400 pixels. Final-page OCR reads the complete analysis image.",
