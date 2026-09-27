@@ -1,3 +1,14 @@
+/*
+This is a java Script file that uses multer lib and express lib
+
+-This file needs node.js to run JavaScript code outside of a web browser
+-Express lib is a backend web application framework for node.js to help make web dev easier
+-Multer lib is a node.js middleware for Express lib usedto handle multipart/form-data from an html <form> input
+
+Most of the function is for type safety and file safety, the core of this file is to listen for any /upload tags sent from the web browser and then process the payload 
+
+*/
+
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
@@ -5,12 +16,23 @@ const fs = require("fs");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const procGo = false;
 
 // Make sure uploads directory exists
 const uploadDirectory = path.join(__dirname, "uploads");
 
+//Make sure backend process directory exists
+const processDirectory = path.join(__dirname,"backend/img");
+
 if (!fs.existsSync(uploadDirectory)) {
     fs.mkdirSync(uploadDirectory);
+}
+
+if(!fs.existsSync(processDirectory)){
+    console.log("Backend folder for processing is missing");
+    procGo = false;
+}else {
+    procGo = true;
 }
 
 // Configure how uploaded files are stored
@@ -53,6 +75,13 @@ app.post("/upload", upload.single("ImageUpload"), (req, res) => {
 
     console.log("Uploaded:", req.file.filename);
     res.status(200).send("Upload successful");
+
+
+
+
+
+
+
 });
 
 app.listen(PORT, () => {
