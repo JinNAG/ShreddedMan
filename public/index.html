@@ -227,15 +227,15 @@
 
 
     .upload-panel {
-      margin-top: 18px;
-      background: #f3ead7;
-      border: 2px solid #6d6157;
+      margin: 18px auto 0;
+      background: #efe6d6;
+      border: none;
       padding: 12px 12px 10px;
       display: flex;
       flex-direction: column;
       gap: 10px;
       width: 100%;
-      max-width: 440px;
+      max-width: none;
     }
 
     .upload-panel form {
@@ -248,12 +248,14 @@
     }
 
     .upload-panel input[type="file"] {
-      width: 100%;
+      flex: 1 1 220px;
+      width: auto;
+      min-width: min(100%, 220px);
       max-width: 360px;
       background: #fffdf8;
       border: 1px solid #7a6558;
       padding: 8px;
-      margin: 0 auto;
+      margin: 0;
     }
 
     .upload-panel .submit-group {
@@ -261,7 +263,7 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
     }
 
     .upload-panel button {
@@ -280,13 +282,6 @@
       height: 52px;
       object-fit: contain;
       display: block;
-    }
-
-    #uploadStatus {
-      min-height: 1.2em;
-      text-align: center;
-      font-size: 13px;
-      color: #1a2a6c;
     }
 
     .feature-links a {
@@ -493,7 +488,6 @@
                   <img class="upload-gif" src="webImg/unshred.gif" alt="Unshred animation" />
                 </div>
               </form>
-              <p id="uploadStatus"></p>
             </div>
           </div>
 
@@ -501,7 +495,7 @@
             <h2>Edited Image</h2>
 
             <div class="result-box">
-              <p id="editedMessage">
+              <p id="editedMessage" aria-live="polite">
                 Your edited image will appear here.
               </p>
 
@@ -523,7 +517,6 @@ Server Script
     <script>
       const form = document.getElementById("uploadForm");
       const fileInput = document.getElementById("Upload");
-      const status = document.getElementById("uploadStatus");
 
       const originalImages = document.getElementById("originalImages");
       const originalMessage = document.getElementById("originalMessage");
@@ -565,11 +558,15 @@ Server Script
 
         // Make sure an image was selected
         if (!file) {
-          status.textContent = "Please select at least one image first.";
+          editedMessage.textContent = "Please select at least one image first.";
+          editedMessage.style.display = "block";
+          editedImage.style.display = "none";
           return;
         }
         if (files.length > 20) {
-          status.textContent = "Please select no more than 20 images at a time.";
+          editedMessage.textContent = "Please select no more than 20 images at a time.";
+          editedMessage.style.display = "block";
+          editedImage.style.display = "none";
           return;
         }
 
@@ -591,7 +588,6 @@ Server Script
         // Show upload status
         submitting = true;
         submitButton.disabled = true;
-        status.textContent = "Uploading...";
 
         // Clear the previous result while the new document is reconstructed.
         editedImage.style.display = "none";
@@ -599,7 +595,7 @@ Server Script
         downloadImage.hidden = true;
         downloadImage.removeAttribute("href");
         editedMessage.style.display = "block";
-        editedMessage.textContent = "Waiting for image processing...";
+        editedMessage.textContent = "Uploading...";
 
 
         // Send all selected images together to your server
@@ -631,8 +627,7 @@ Server Script
             if (submission.status === "failed") {
               throw new Error(submission.error || "Document reconstruction failed. Please try another image.");
             }
-            status.textContent = progress[submission.status] || "Reconstructing your document...";
-            editedMessage.textContent = status.textContent;
+            editedMessage.textContent = progress[submission.status] || "Reconstructing your document...";
             await new Promise(resolve => setTimeout(resolve, 1500));
             submission = await requestJSON(submission.status_url);
           }
@@ -640,8 +635,7 @@ Server Script
           if (!submission.document_url) {
             throw new Error("The reconstructed document is not available. Please try again.");
           }
-          status.textContent = "Loading reconstructed document...";
-          editedMessage.textContent = status.textContent;
+          editedMessage.textContent = "Loading reconstructed document...";
           editedImage.src = submission.document_url;
           try {
             await editedImage.decode();
@@ -652,9 +646,6 @@ Server Script
           editedMessage.style.display = "none";
           downloadImage.href = submission.document_url;
           downloadImage.hidden = false;
-          status.textContent = "Reconstruction complete!";
-
-
         } catch (error) {
 
           console.error(error);
@@ -662,7 +653,6 @@ Server Script
           const message = error.name === "TimeoutError"
             ? "The request timed out. Reconstruction may still be running."
             : error.message;
-          status.textContent = message;
           editedMessage.textContent = message;
           editedImage.style.display = "none";
           editedMessage.style.display = "block";
