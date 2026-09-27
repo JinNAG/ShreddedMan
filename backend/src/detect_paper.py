@@ -32,7 +32,7 @@ def orient_photo(image, rotation: str = "auto"):
 
 
 def detect_strips(image: np.ndarray, min_strip_area: float = 100) -> list[np.ndarray]:
-    """Find mostly vertical paper strips, bridging interruptions caused by ink."""
+    """Find paper strips, bridging ink gaps and rejecting background fibres."""
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     _, mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
     initial, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -56,7 +56,17 @@ def detect_strips(image: np.ndarray, min_strip_area: float = 100) -> list[np.nda
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, gap_kernel_height))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    strips = [c for c in contours if cv2.contourArea(c) >= min_strip_area]
+    # A fixed 100-pixel threshold admits carpet fibres in high-resolution
+    # photos. Compare their size with actual paper width, not photo dimensions
+    # or full strip length: short, full-width paper pieces should still survive.
+    area_threshold = max(min_strip_area, 0.5 * paper_width ** 2)
+    strips = []
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        height = cv2.boundingRect(contour)[3]
+        if (area >= area_threshold and height >= 0.5 * paper_width
+                and area / height >= 0.25 * paper_width):
+            strips.append(contour)
     return sorted(strips, key=lambda contour: cv2.boundingRect(contour)[:2])
 
 

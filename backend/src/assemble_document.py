@@ -10,21 +10,25 @@ reprocessed in place; every supported image in its source_images is included.
 
 import argparse
 from pathlib import Path
+from time import perf_counter
 
 from detect_paper import detect_submission
 from normalize_strips import normalize_submission
 from sort_strips import sort_submission
-from submission import DEFAULT_IMG_ROOT, Submission, create_submission
+from strip_ocr import DEFAULT_OCR_WORKERS
+from submission import DEFAULT_IMG_ROOT, Submission, create_submission, write_json
 
 
 def process_submission(
     submission_dir: Path, rotation: str = "auto", *,
-    ocr_mode: str = "auto", ocr_language: str = "eng", ocr_workers: int = 4,
+    ocr_mode: str = "auto", ocr_language: str = "eng", ocr_workers: int = DEFAULT_OCR_WORKERS,
 ) -> dict:
     """Run all stages in one existing submission, recording its status."""
     submission = Submission(Path(submission_dir))
     if not submission.source_images.is_dir():
         raise ValueError(f"Submission has no source_images directory: {submission.directory}")
+    started = perf_counter()
+    timings = {}
     try:
         submission.sources()
         manifest = submission.read_manifest()
@@ -32,11 +36,24 @@ def process_submission(
         manifest.pop("error", None)
         manifest.pop("result", None)
         manifest.pop("join_report", None)
+        manifest.pop("timings_seconds", None)
+        manifest.pop("sorting_timings_seconds", None)
         submission.save_manifest(manifest)
-        detect_submission(submission.directory, rotation)
-        normalize_submission(submission.directory)
+        for name, operation in (("detection", lambda: detect_submission(submission.directory, rotation)),
+                                ("normalization", lambda: normalize_submission(submission.directory))):
+            stage = perf_counter()
+            operation()
+            timings[name] = round(perf_counter() - stage, 3)
+        stage = perf_counter()
         report = sort_submission(submission.directory, ocr_mode=ocr_mode,
                                  ocr_language=ocr_language, ocr_workers=ocr_workers)
+        timings["sorting"] = round(perf_counter() - stage, 3)
+        timings["total"] = round(perf_counter() - started, 3)
+        report["timings_seconds"] = timings
+        write_json(submission.order_path, report)
+        manifest = submission.read_manifest()
+        manifest["timings_seconds"] = timings
+        submission.save_manifest(manifest)
     except Exception as error:
         manifest = submission.read_manifest()
         manifest.update(status="failed", error=str(error))
@@ -49,7 +66,7 @@ def process_submission(
 
 def assemble_document(
     source_images: list[Path], img_root: Path = DEFAULT_IMG_ROOT, rotation: str = "auto",
-    *, ocr_mode: str = "auto", ocr_language: str = "eng", ocr_workers: int = 4,
+    *, ocr_mode: str = "auto", ocr_language: str = "eng", ocr_workers: int = DEFAULT_OCR_WORKERS,
 ) -> dict:
     """Application entry point: copy uploads, reserve a UUID, and assemble."""
     submission = create_submission(source_images, img_root)
@@ -68,7 +85,7 @@ def main() -> None:
     )
     parser.add_argument("--ocr", choices=("auto", "required", "off"), default="auto")
     parser.add_argument("--ocr-language", default="eng")
-    parser.add_argument("--ocr-workers", type=int, default=4)
+    parser.add_argument("--ocr-workers", type=int, default=DEFAULT_OCR_WORKERS)
     args = parser.parse_args()
     if bool(args.source_images) == bool(args.submission):
         parser.error("Provide source photos OR --submission with an existing submission folder.")

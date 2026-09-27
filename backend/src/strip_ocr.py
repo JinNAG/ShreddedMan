@@ -16,6 +16,9 @@ import numpy as np
 from submission import write_json
 
 
+DEFAULT_OCR_WORKERS = min(8, max(1, os.cpu_count() or 1))
+
+
 class TesseractOCR:
     def __init__(self, mode="auto", language="eng", cache_path: Path | None = None):
         if mode not in ("auto", "required", "off"):

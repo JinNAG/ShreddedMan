@@ -18,7 +18,7 @@ CONFIDENCE_NOTE = (
 
 
 def confidence_for_join(visual, evidence, margin, stability, ocr_enabled):
-    quality = (0.65 * visual + 0.05 * evidence["stroke_score"] + 0.30 * evidence["ocr_score"]
+    quality = (0.5 * visual + 0.5 * evidence["ocr_score"]
                if ocr_enabled else visual)
     separation = float(np.clip(0.5 + (margin or 0) / 0.2, 0, 1))
     amount = min(1.0, evidence["text_lines"] / 12)
@@ -53,13 +53,14 @@ def confidence_for_join(visual, evidence, margin, stability, ocr_enabled):
             "reasons": reasons}
 
 
-def build_join_report(order, ranked, scores, verifier, labels, refinement):
+def build_join_report(order, ranked, scores, verifier, labels, refinement, document_check=None):
     edges = [set(zip(candidate, candidate[1:])) for _, candidate in ranked]
     items = []
     for position, (a, b) in enumerate(zip(order, order[1:]), 1):
-        evidence = verifier.evaluate((a, b))["seams"][0]
-        successors = sorted((j for j in range(len(labels)) if j not in (a, b)), key=lambda j: -scores[a, j])[:3]
-        predecessors = sorted((j for j in range(len(labels)) if j not in (a, b)), key=lambda j: -scores[j, b])[:3]
+        analysis = verifier.evaluate((a, b))
+        evidence = analysis["seams"][0]
+        successors = sorted((j for j in range(len(labels)) if j not in (a, b) and np.isfinite(scores[a, j])), key=lambda j: -scores[a, j])[:3]
+        predecessors = sorted((j for j in range(len(labels)) if j not in (a, b) and np.isfinite(scores[j, b])), key=lambda j: -scores[j, b])[:3]
         competing = [float(scores[a, j]) for j in successors] + [float(scores[j, b]) for j in predecessors]
         margin = float(scores[a, b]) - max(competing) if competing else None
         support = sum((a, b) in candidate for candidate in edges)
@@ -74,6 +75,8 @@ def build_join_report(order, ranked, scores, verifier, labels, refinement):
                        "ocr_ink_evidence": evidence["ocr_score"] if verifier.ocr.enabled else None,
                        "mean_ocr_recognition": evidence["ocr_confidence"] if verifier.ocr.enabled else None},
             "text_lines": evidence["text_lines"], "recognized_lines": evidence["recognized_lines"],
+            "sampled_text_lines": analysis["sampled_text_lines"],
+            "available_text_lines": analysis["available_text_lines"],
             "ink_coverage": evidence["ink_coverage"] if verifier.ocr.enabled else None,
             "margin_over_competing_neighbor": margin, "supporting_orders": support, "tested_top_orders": len(edges),
             "alternative_right_neighbors": [{"strip": labels[j], "score": float(scores[a, j])} for j in successors],
@@ -81,20 +84,29 @@ def build_join_report(order, ranked, scores, verifier, labels, refinement):
             "ocr_fragments": evidence["fragments"] if verifier.ocr.enabled else [],
             "line_checks": evidence["lines"] if verifier.ocr.enabled else [],
         })
+    document_check = document_check or {"enabled": False}
+    if document_check["enabled"]:
+        full_page = verifier.evaluate_document(order)
+        for item, evidence in zip(items, full_page["seams"]):
+            item["full_page_evidence"] = evidence
+            item["flagged_by_document_check"] = item["join"] in document_check["suspect_joins"]
     return {
-        "schema_version": 1, "confidence_note": CONFIDENCE_NOTE,
+        "schema_version": 3, "confidence_note": CONFIDENCE_NOTE,
         "position_numbering": "Positions count from the left starting at 1; source filenames are unchanged.",
-        "evidence_coordinates": "OCR boxes and line y coordinates refer to the locally aligned pair analysis, at common strip height; they are not document.png coordinates.",
+        "evidence_coordinates": "Pair OCR boxes refer to the locally aligned pair analysis; full-page evidence refers to the complete analysis rendering. Neither uses document.png coordinates.",
+        "analysis_height": verifier.height,
+        "ocr_sampling": "Pair and context OCR sample up to 24 text lines spread over the full strip height; unread ink inside those lines counts against the score. Whole-page OCR and visual matching include every row. OCR analysis height is capped at 2400 pixels.",
+        "candidate_selection": "Every directed pair is compared visually and with OCR. All neighbors remain available; context search can move single strips or intact groups. Whole-page OCR compares the finalists with the pairwise baseline.",
         "confidence_formula": "100 * (0.40*quality + 0.25*separation + 0.20*order_support + 0.15*evidence_amount), with evidence-based caps",
         "formula_details": {
-            "quality": "0.65*visual + 0.05*stroke + 0.30*OCR ink evidence; visual only when OCR is off",
+            "quality": "0.5*visual + 0.5*OCR ink evidence; visual only when OCR is off",
             "separation": "clamp(0.5 + neighbor_margin/0.2, 0, 1); 0.5 if no competing neighbor",
             "order_support": "fraction of the reported top orders containing the join",
             "evidence_amount": "min(text_lines/12, 1) * ink_coverage; omit coverage if OCR is off",
             "caps": "39 for <3 text lines; 59 without OCR or with a better neighbor; 49 for poor OCR coverage; 74 for close alternatives or unstable order",
         },
         "confidence_levels": {"high": "80–100", "medium": "60–79.9", "low": "0–59.9"},
-        "ocr": verifier.ocr.metadata(), "refinement": refinement,
+        "ocr": verifier.ocr.metadata(), "refinement": refinement, "document_check": document_check,
         "summary": dict(Counter(item["confidence"]["level"] for item in items)), "joins": items,
     }
 
@@ -136,17 +148,33 @@ def write_join_reports(output_dir, report, verifier, order):
         alternatives = "; ".join(f'{esc(candidate["strip"])} ({candidate["score"]:.3f})' for candidate in item["alternative_right_neighbors"]) or "No other right neighbor."
         reasons = "".join(f'<li>{esc(reason)}</li>' for reason in confidence["reasons"])
         image = f'<img class="evidence" src="data:image/png;base64,{thumbnail}" alt="Three weakest text regions; orange marks the cut">' if thumbnail else ""
+        page_evidence = item.get("full_page_evidence")
+        page_note = (f'<p><strong>Full-page OCR evidence:</strong> {page_evidence["ocr_score"]:.3f}; '
+                     f'ink coverage {page_evidence["ink_coverage"]:.3f}. '
+                     f'{"Flagged for review." if item["flagged_by_document_check"] else "No full-page flag."}</p>'
+                     if page_evidence is not None else "")
         details.append(f'<section id="join-{number}"><h2>Join {number}: positions {number} → {number + 1}</h2>'
                        f'<p>{esc(item["left_strip"])} → {esc(item["right_strip"])} · '
                        f'<strong class="{level}">{level.title()} support, {confidence["score"]}/100</strong></p>'
-                       f'<ul>{reasons}</ul>{image}'
+                       f'<ul>{reasons}</ul>{image}{page_note}'
                        f'<p>Stroke continuity: {fmt(item["scores"]["stroke_continuity"])}. '
                        f'OCR recognition: {fmt(item["scores"]["mean_ocr_recognition"])}. Ink coverage: {fmt(item["ink_coverage"])}. '
                        f'Recognized lines: {item["recognized_lines"]}/{item["text_lines"]}. '
+                       f'Text regions sampled: {item["sampled_text_lines"]}/{item["available_text_lines"]}. '
                        f'Present in {item["supporting_orders"]}/{item["tested_top_orders"]} top tested orders.</p>'
                        f'<p><strong>Weak OCR fragments:</strong> {fragment_text}</p>'
                        f'<p><strong>Other right-neighbor candidates:</strong> {alternatives}</p></section>')
     counts = ", ".join(f"{count} {level}" for level, count in sorted(report["summary"].items())) or "No joins (one text strip)."
+    check = report["document_check"]
+    document_section = ""
+    if check["enabled"]:
+        suspects = ", ".join(f'<a href="#join-{i}">{i} → {i + 1}</a>' for i in check["suspect_joins"]) or "None flagged."
+        document_section = (f'<section><h2>Complete-page OCR check</h2>'
+                            f'<p>Readability evidence: {check["baseline_score"]:.3f} before context correction → '
+                            f'{check["final_score"]:.3f} in the selected document. Compared {check["evaluated_orders"]} complete orders.</p>'
+                            f'<p>{esc(check["score_note"])} Analysis height: {check["final_reading"]["analysis_height"]} pixels; the saved document keeps its original resolution.</p>'
+                            f'<p>Joins to review: {suspects}</p><details><summary>Text recognized from the final page</summary>'
+                            f'<p>{esc(check["final_reading"]["text"])}</p></details></section>')
     page = f'''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Strip join verification</title><style>
 body{{font:16px/1.5 system-ui,sans-serif;color:#182230;background:#f5f7fa;margin:0;padding:32px;max-width:1180px;margin:auto}}
@@ -158,6 +186,8 @@ th{{background:#e9edf3}}.high{{color:#17613b}}.medium{{color:#855900}}.low{{colo
 <p class="note">{esc(CONFIDENCE_NOTE)}</p><p>{esc(report["position_numbering"])}</p>
 <p>OCR: {esc(report["ocr"]["status"])} ({esc(report["ocr"].get("version") or report["ocr"].get("reason"))}).
 Dictionary correction is disabled. OCR evidence includes unread ink; raw recognition confidence alone is not a join confidence.</p>
+<p>{esc(report["ocr_sampling"])} {esc(report["candidate_selection"])}</p>
+{document_section}
 <p>Orange lines mark the cut in analysis crops. Crops show the weakest tested text regions; they suggest possible problems, not confirmed errors.</p>
 <div class="table"><table><thead><tr><th>Positions</th><th>Source strips</th><th>Confidence</th><th>Visual</th><th>OCR evidence</th><th>Neighbor margin</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>
 {"".join(details)}<section><h2>How the search stopped</h2><p>{esc(report["refinement"]["stop_reason"])}</p>

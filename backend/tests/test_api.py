@@ -123,6 +123,8 @@ class ApiTests(unittest.TestCase):
         self.assertIsNone(result["document_url"])
         self.assertIn("Check the photos", result["error"])
         self.assertNotIn(str(self.root), json.dumps(result))
+        manifest = Submission(self.root / result["submission_id"]).read_manifest()
+        self.assertIn("No paper strips detected", manifest["error"])
         self.assertEqual(self.client.get(result["status_url"] + "/document").status_code, 409)
 
     def test_missing_files_and_invalid_rotation_are_rejected(self):
@@ -206,6 +208,42 @@ class ApiTests(unittest.TestCase):
         self.assertIn("202", upload["responses"])
         document = schema["paths"]["/api/submissions/{submission_id}/document"]["get"]
         self.assertIn("image/png", document["responses"]["200"]["content"])
+
+    def test_local_frontend_can_upload_poll_and_download_across_origins(self):
+        for origin in ("http://127.0.0.1:3000", "http://localhost:3000"):
+            with self.subTest(origin=origin):
+                preflight = self.client.options("/api/submissions", headers={
+                    "Origin": origin, "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "content-type",
+                })
+                self.assertEqual(preflight.status_code, 200)
+                self.assertEqual(preflight.headers["access-control-allow-origin"], origin)
+                # Even validation errors must be readable by the frontend.
+                invalid = self.client.post("/api/submissions", headers={"Origin": origin})
+                self.assertEqual(invalid.status_code, 422)
+                self.assertEqual(invalid.headers["access-control-allow-origin"], origin)
+                submission = Submission(self.root / uuid.uuid4().hex)
+                submission.ensure_layout()
+                submission.save_manifest({"status": "complete"})
+                (submission.final_document / "document.png").write_bytes(self.photo)
+                url = f"/api/submissions/{submission.directory.name}"
+                for path in (url, url + "/document"):
+                    response = self.client.get(path, headers={"Origin": origin})
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.headers["access-control-allow-origin"], origin)
+
+    def test_frontend_origin_allowlist_can_be_configured(self):
+        with patch.dict("os.environ", {"SHREDDEDMAN_FRONTEND_ORIGINS": " http://localhost:5173/ "}):
+            with TestClient(create_app(self.root)) as client:
+                for origin, expected in (("http://localhost:5173", 200), ("http://localhost:3000", 400)):
+                    response = client.options("/api/submissions", headers={
+                        "Origin": origin, "Access-Control-Request-Method": "POST",
+                    })
+                    self.assertEqual(response.status_code, expected)
+                    if expected == 200:
+                        self.assertEqual(response.headers["access-control-allow-origin"], origin)
+                    else:
+                        self.assertNotIn("access-control-allow-origin", response.headers)
 
 
 if __name__ == "__main__":

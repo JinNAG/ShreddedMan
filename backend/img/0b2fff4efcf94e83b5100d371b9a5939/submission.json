@@ -1,0 +1,209 @@
+{
+  "submission_id": "0b2fff4efcf94e83b5100d371b9a5939",
+  "status": "complete",
+  "sources": [
+    {
+      "filename": "photo5_1.jpg",
+      "original_name": "photo5_1.jpg",
+      "rotation_ccw": 0,
+      "strip_count": 17
+    },
+    {
+      "filename": "photo5_2.jpg",
+      "original_name": "photo5_2.jpg",
+      "rotation_ccw": 90,
+      "strip_count": 18
+    }
+  ],
+  "strips": [
+    {
+      "filename": "strip1.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 1
+    },
+    {
+      "filename": "strip2.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 2
+    },
+    {
+      "filename": "strip3.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 3
+    },
+    {
+      "filename": "strip4.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 4
+    },
+    {
+      "filename": "strip5.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 5
+    },
+    {
+      "filename": "strip6.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 6
+    },
+    {
+      "filename": "strip7.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 7
+    },
+    {
+      "filename": "strip8.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 8
+    },
+    {
+      "filename": "strip9.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 9
+    },
+    {
+      "filename": "strip10.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 10
+    },
+    {
+      "filename": "strip11.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 11
+    },
+    {
+      "filename": "strip12.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 12
+    },
+    {
+      "filename": "strip13.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 13
+    },
+    {
+      "filename": "strip14.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 14
+    },
+    {
+      "filename": "strip15.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 15
+    },
+    {
+      "filename": "strip16.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 16
+    },
+    {
+      "filename": "strip17.png",
+      "source_image": "source_images/photo5_1.jpg",
+      "source_strip_number": 17
+    },
+    {
+      "filename": "strip18.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 1
+    },
+    {
+      "filename": "strip19.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 2
+    },
+    {
+      "filename": "strip20.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 3
+    },
+    {
+      "filename": "strip21.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 4
+    },
+    {
+      "filename": "strip22.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 5
+    },
+    {
+      "filename": "strip23.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 6
+    },
+    {
+      "filename": "strip24.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 7
+    },
+    {
+      "filename": "strip25.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 8
+    },
+    {
+      "filename": "strip26.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 9
+    },
+    {
+      "filename": "strip27.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 10
+    },
+    {
+      "filename": "strip28.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 11
+    },
+    {
+      "filename": "strip29.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 12
+    },
+    {
+      "filename": "strip30.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 13
+    },
+    {
+      "filename": "strip31.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 14
+    },
+    {
+      "filename": "strip32.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 15
+    },
+    {
+      "filename": "strip33.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 16
+    },
+    {
+      "filename": "strip34.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 17
+    },
+    {
+      "filename": "strip35.png",
+      "source_image": "source_images/photo5_2.jpg",
+      "source_strip_number": 18
+    }
+  ],
+  "result": "final_document/document.png",
+  "join_report": "final_document/join_report.html",
+  "sorting_timings_seconds": {
+    "visual_matching": 1.831,
+    "pair_ocr": 16.76,
+    "context_verification": 5.036,
+    "total": 26.168
+  },
+  "timings_seconds": {
+    "detection": 0.857,
+    "normalization": 1.019,
+    "sorting": 26.174,
+    "total": 28.05
+  }
+}
