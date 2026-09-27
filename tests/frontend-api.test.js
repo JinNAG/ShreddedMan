@@ -103,8 +103,15 @@ function browser() {
       get textContent() { return messages.at(-1); },
       append(node) { links.push(node); }
     },
-    originalImage: { style: {} }, originalMessage: { style: {} },
+    originalImages: {
+      style: {},
+      replaceChildren(...children) { this.children = children; }
+    }, originalMessage: { style: {} },
     editedMessage: { style: {} },
+    downloadImage: {
+      hidden: true,
+      removeAttribute(name) { delete this[name]; }
+    },
     editedImage: {
       style: { display: "none" },
       removeAttribute(name) { delete this[name]; },
@@ -146,7 +153,10 @@ test("all photos reach one submission and the finished PNG appears in Edited Ima
   assert.equal(page.nodes.editedImage.src, documentURL);
   assert.equal(page.nodes.editedImage.style.display, "block");
   assert.equal(page.nodes.editedMessage.style.display, "none");
-  assert.equal(page.nodes.originalImage.style.display, "block");
+  assert.equal(page.nodes.originalImages.style.display, "grid");
+  assert.equal(page.nodes.originalImages.children.length, 2);
+  assert.equal(page.nodes.downloadImage.href, documentURL);
+  assert.equal(page.nodes.downloadImage.hidden, false);
   assert.equal(page.nodes.uploadStatus.textContent, "Reconstruction complete!");
   assert.ok(page.messages.includes("Sorting strips and reconstructing your document..."));
   assert.equal(page.button.disabled, false);
@@ -174,6 +184,7 @@ test("a later failed job hides the old image and displays the backend error", as
   assert.equal(documentRequests, 1);
   assert.equal(page.nodes.editedImage.style.display, "none");
   assert.equal(page.nodes.editedMessage.style.display, "block");
+  assert.equal(page.nodes.downloadImage.hidden, true);
   assert.match(page.nodes.editedMessage.textContent, /Check the photos/);
   assert.equal(page.button.disabled, false);
 });
