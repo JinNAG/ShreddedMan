@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
+from scipy.fft import irfft, next_fast_len, rfft
 
 
 def strip_ink(image: np.ndarray) -> np.ndarray:
@@ -52,41 +53,61 @@ def ink_profiles(image: np.ndarray, height: int) -> np.ndarray:
     return np.asarray(profiles, dtype=np.float32)
 
 
-def _affine_match(a, b, max_shift, scale_range):
-    height = a.shape[1]
+def _affine_matches(profiles, max_shift, scale_range):
+    """Reuse Fourier transforms across pairs instead of repeating registration.
+
+    This computes the same full-height edge/body correlations at every allowed
+    offset. Scale refinement is grouped by height, and temporary FFT arrays are
+    bounded in size so larger submissions do not need an N*N*height workspace.
+    """
+    profiles = np.asarray(profiles)
+    count, _, height = profiles.shape
     padding = max_shift + int(np.ceil(height * scale_range)) + 2
-    best = (0.0, 1.0, 0)
-    padded = [np.pad(signal, (padding, padding))[:, None] for signal in a]
-    # Refine scale to sub-pixel changes in total height instead of accepting
-    # the several-pixel error left by a coarse scale grid.
-    tried = set()
-    for stage in range(2):
-        if stage == 0:
-            search = np.linspace(1 - scale_range, 1 + scale_range, 25)
-        else:
-            radius = scale_range / 10
-            search = np.linspace(
-                max(1 - scale_range, best[1] - radius),
-                min(1 + scale_range, best[1] + radius), 17,
+    fft_size = next_fast_len(height * 2 + 2 * padding)
+    left, right = profiles[:, [1, 2]], profiles[:, [0, 2]]
+    left_fft = rfft(np.pad(left, ((0, 0), (0, 0), (padding, padding))), n=fft_size, axis=-1)
+    left_energy = np.sum(left * left, axis=-1)
+    best = np.zeros((count, count))
+    heights = np.full((count, count), height)
+    offsets = np.zeros((count, count), int)
+    positions = np.arange(padding - max_shift, padding + max_shift + 1)
+    channel_weights = np.array([0.8, 0.2], dtype=np.float32)[None, :, None]
+
+    def score_height(scaled_height, pairs):
+        scaled = cv2.resize(right.reshape(count * 2, height).T, (count * 2, scaled_height))
+        scaled = scaled.T.reshape(count, 2, scaled_height).copy()
+        right_fft = rfft(scaled, n=fft_size, axis=-1)
+        right_energy = np.sum(scaled * scaled, axis=-1)
+        for start in range(0, len(pairs), 128):
+            ii, jj = pairs[start:start + 128].T
+            energy = left_energy[ii] + right_energy[jj]
+            products = np.sum(
+                left_fft[ii] * np.conj(right_fft[jj])
+                * (2 * channel_weights / np.maximum(energy[:, :, None], 1e-9)), axis=1,
             )
-        for scale in search:
-            scaled_height = max(2, round(height * scale))
-            if scaled_height in tried:
-                continue
-            tried.add(scaled_height)
-            values = []
-            for signal, target, source in zip(a, padded, b):
-                scaled = cv2.resize(source[:, None], (1, scaled_height))
-                cross = cv2.matchTemplate(target, scaled, cv2.TM_CCORR).ravel()
-                energy = float(np.sum(signal * signal) + np.sum(scaled * scaled))
-                values.append(np.clip(2 * cross / max(energy, 1e-9), 0, 1))
-            value = 0.8 * values[0] + 0.2 * values[1]
-            offsets = np.arange(len(value)) - padding
-            value[np.abs(offsets) > max_shift] = -np.inf
-            index = int(np.argmax(value))
-            if value[index] > best[0] + 1e-7:
-                best = (float(value[index]), scaled_height / height, int(offsets[index]))
-    return best
+            values = irfft(products, n=fft_size, axis=-1)[:, positions]
+            values[:, positions > height + 2 * padding - scaled_height] = -np.inf
+            indices = values.argmax(1)
+            scores = values[np.arange(len(ii)), indices]
+            improved = scores > best[ii, jj] + 1e-7
+            a, b = ii[improved], jj[improved]
+            best[a, b] = scores[improved]
+            heights[a, b] = scaled_height
+            offsets[a, b] = positions[indices[improved]] - padding
+
+    pairs = np.column_stack(np.where(~np.eye(count, dtype=bool)))
+    for scaled_height in sorted({max(2, round(height * scale))
+                                 for scale in np.linspace(1 - scale_range, 1 + scale_range, 25)}):
+        score_height(scaled_height, pairs)
+    refinements = {}
+    for i, j in pairs:
+        scale = heights[i, j] / height
+        for value in np.linspace(max(1 - scale_range, scale - scale_range / 10),
+                                 min(1 + scale_range, scale + scale_range / 10), 17):
+            refinements.setdefault(max(2, round(height * value)), set()).add((i, j))
+    for scaled_height, candidates in sorted(refinements.items()):
+        score_height(scaled_height, np.asarray(sorted(candidates)))
+    return best, heights / height, offsets
 
 
 def _local_alignment(a, b, scale, offset):
@@ -162,11 +183,12 @@ def match_profiles(
     scales, offsets = np.ones((count, count)), np.zeros((count, count), dtype=int)
     rows = np.arange(height, dtype=np.float32)
     warps = np.broadcast_to(rows, (count, count, height)).copy()
+    coarse_scores, scales, offsets = _affine_matches(profiles, max_shift, scale_range)
     for i, left in enumerate(profiles):
         for j, right in enumerate(profiles):
             if i == j:
                 continue
-            coarse, scale, offset = _affine_match(left[[1, 2]], right[[0, 2]], max_shift, scale_range)
+            coarse, scale, offset = coarse_scores[i, j], scales[i, j], offsets[i, j]
             if coarse == 0:
                 scores[i, j] = 0
                 continue

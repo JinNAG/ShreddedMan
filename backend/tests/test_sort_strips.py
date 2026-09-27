@@ -10,10 +10,33 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from sort_strips import rank_orders, sort_strips
-from strip_matching import ink_profiles, match_profiles
+from strip_matching import _affine_matches, ink_profiles, match_profiles
 
 
 class StripSortingTests(unittest.TestCase):
+    def test_shared_fft_matches_direct_full_height_correlation(self):
+        # Check both directions and positive/negative shifts independently of
+        # FFT implementation details, including the zero padding at the tips.
+        profiles = np.random.default_rng(41).uniform(0, 1, (4, 3, 128)).astype(np.float32)
+        actual, scales, offsets = _affine_matches(profiles, 17, 0)
+        rows = np.arange(128)
+        for a in range(4):
+            for b in range(4):
+                if a == b:
+                    continue
+                candidates = []
+                for shift in range(-17, 18):
+                    score = 0
+                    for weight, left, right in ((0.8, profiles[a, 1], profiles[b, 0]),
+                                                (0.2, profiles[a, 2], profiles[b, 2])):
+                        aligned = np.interp(rows - shift, rows, right, left=0, right=0)
+                        score += weight * 2 * np.sum(left * aligned) / (np.sum(left ** 2) + np.sum(right ** 2))
+                    candidates.append((score, shift))
+                expected, shift = max(candidates)
+                self.assertAlmostEqual(actual[a, b], expected, places=6)
+                self.assertEqual(offsets[a, b], shift)
+                self.assertEqual(scales[a, b], 1)
+
     def test_global_order_can_reject_the_highest_individual_match(self):
         scores = np.zeros((4, 4))
         np.fill_diagonal(scores, -np.inf)

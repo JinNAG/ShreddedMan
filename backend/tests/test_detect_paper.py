@@ -28,6 +28,30 @@ def interrupted_strips(width=40):
 
 
 class PaperDetectionTests(unittest.TestCase):
+    def test_bright_background_fibres_are_rejected_at_different_resolutions(self):
+        for width in (20, 40, 80):
+            with self.subTest(width=width):
+                paper = interrupted_strips(width)
+                image = np.zeros((paper.shape[0] + 2 * width, paper.shape[1] + 2 * width, 3), np.uint8)
+                image[width:width + paper.shape[0], :paper.shape[1]] = paper
+                # Long thin fibres have enough area to pass a size-only test.
+                x = paper.shape[1] + 3
+                image[width:7 * width, x:x + max(3, round(0.15 * width))] = 240
+                # A separate bright speck exceeds the old fixed area cutoff.
+                image[3:8, 3:width + 15] = 240
+                strips = detect_strips(image)
+                self.assertEqual(len(strips), 4)
+                for number, strip in enumerate(strips):
+                    self.assertEqual(cv2.boundingRect(strip),
+                                     (10 + number * (width + 3), 2 * width, width, 8 * width))
+
+    def test_short_full_width_piece_is_not_mistaken_for_a_fibre(self):
+        image = np.zeros((500, 180, 3), np.uint8)
+        image[30:460, 20:60] = 240
+        image[100:140, 100:140] = 240
+        self.assertEqual([cv2.boundingRect(c) for c in detect_strips(image)],
+                         [(20, 30, 40, 430), (100, 100, 40, 40)])
+
     def test_joins_ink_gaps_without_merging_neighbors_at_different_resolutions(self):
         for width in (20, 40, 80):
             with self.subTest(width=width):

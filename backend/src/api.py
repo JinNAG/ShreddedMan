@@ -1,4 +1,4 @@
-"""HTTP interface for document submissions; run with uvicorn api:app --app-dir src."""
+"""HTTP interface; from the repo root run uvicorn api:app --app-dir backend/src."""
 
 import logging
 import os
@@ -13,6 +13,7 @@ from typing import Annotated, Literal
 import cv2
 from assemble_document import process_submission
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
@@ -100,15 +101,16 @@ def _save_uploads(files: list[UploadFile], staging: Path) -> list[Path]:
 def _run_submission(submission: Submission, rotation: str) -> None:
     try:
         process_submission(submission.directory, rotation)
-    except Exception:
-        # Keep diagnostic details in server logs, not in the public response.
+    except Exception as error:
+        # Preserve the cause in the local manifest as well as server logs.
+        # describe() keeps internal details out of the public response.
         logger.exception(
             "Processing failed for submission %s", submission.directory.name
         )
         manifest = submission.read_manifest()
         manifest.update(
             status="failed",
-            error="Document reconstruction failed. Check the photos and try again.",
+            error=str(error),
         )
         manifest.pop("result", None)
         submission.save_manifest(manifest)
@@ -136,6 +138,15 @@ def create_app(img_root: Path | None = None) -> FastAPI:
             await run_in_threadpool(application.state.executor.shutdown, wait=True)
 
     application = FastAPI(title="ShreddedMan API", version="1.0.0", lifespan=lifespan)
+    origins = os.environ.get(
+        "SHREDDEDMAN_FRONTEND_ORIGINS", "http://127.0.0.1:3000,http://localhost:3000"
+    )
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=[origin.strip().rstrip("/") for origin in origins.split(",") if origin.strip()],
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type"],
+    )
 
     def find_submission(submission_id: str) -> Submission:
         if not re.fullmatch(r"[0-9a-f]{32}", submission_id):

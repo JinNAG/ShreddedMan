@@ -12,6 +12,7 @@ import argparse
 import heapq
 from itertools import permutations
 from pathlib import Path
+from time import perf_counter
 
 import cv2
 import numpy as np
@@ -19,8 +20,8 @@ import numpy as np
 from strip_matching import ink_fraction, ink_profiles, match_profiles
 from strip_order import optimize_orders
 from submission import Submission, write_json
-from strip_ocr import TesseractOCR
-from join_verification import JoinVerifier, refine_orders
+from strip_ocr import DEFAULT_OCR_WORKERS, TesseractOCR
+from join_verification import JoinVerifier, refine_orders, verify_document_orders
 from join_report import build_join_report, write_join_reports
 
 
@@ -94,9 +95,11 @@ def assemble_preview(
 
 def sort_strips(
     input_dirs: Path | list[Path], output_dir: Path, *,
-    ocr_mode: str = "auto", ocr_language: str = "eng", ocr_workers: int = 4,
+    ocr_mode: str = "auto", ocr_language: str = "eng", ocr_workers: int = DEFAULT_OCR_WORKERS,
 ) -> dict:
     """Render one document and write its order report beside the output folder."""
+    started = perf_counter()
+    timings = {}
     directories = [input_dirs] if isinstance(input_dirs, Path) else list(input_dirs)
     if not directories:
         raise ValueError("At least one input directory is required.")
@@ -135,20 +138,37 @@ def sort_strips(
         raise ValueError("No usable ink near the strip edges; cannot estimate an order.")
 
     ocr = TesseractOCR(ocr_mode, ocr_language, output_dir.parent / ".ocr_cache.json")
+    stage = perf_counter()
     matches = match_profiles(profiles)
+    timings["visual_matching"] = round(perf_counter() - stage, 3)
     scales, offsets = matches.scales, matches.offsets
     active_images = [images[index] for index in active]
     active_labels = [labels[index] for index in active]
     visual_order = rank_orders(matches.scores, count=1)[0][1]
     verifier = JoinVerifier(active_images, matches, common_height, ocr, workers=ocr_workers)
-    print(f"OCR verification: {ocr.status}. Comparing {len(active) * (len(active) - 1)} directed joins.", flush=True)
+    print(f"Compared all {len(active) * (len(active) - 1)} directed joins. OCR verification: {ocr.status}.", flush=True)
     try:
+        stage = perf_counter()
         scores = verifier.score_pairs()
+        timings["pair_ocr"] = round(perf_counter() - stage, 3)
         pair_ranked = rank_orders(scores)
         print("Refining the order using text across three neighboring strips..." if ocr.enabled
               else f"Visual-only ordering: {ocr.reason}", flush=True)
+        stage = perf_counter()
         ranked, refinement = refine_orders(pair_ranked, scores, verifier)
-        join_report = build_join_report(ranked[0][1], ranked, scores, verifier, active_labels, refinement)
+        timings["context_verification"] = round(perf_counter() - stage, 3)
+        if ocr.enabled:
+            print("Checking the complete reconstructed page with OCR...", flush=True)
+        stage = perf_counter()
+        ranked, document_check = verify_document_orders(ranked, pair_ranked, verifier)
+        if document_check["enabled"]:
+            for key in ("baseline_order", "selected_order"):
+                document_check[key] = [active_labels[index] for index in document_check[key]]
+            for candidate in document_check["candidates"]:
+                candidate["order"] = [active_labels[index] for index in candidate["order"]]
+        timings["document_verification"] = round(perf_counter() - stage, 3)
+        join_report = build_join_report(ranked[0][1], ranked, scores, verifier, active_labels, refinement,
+                                        document_check=document_check)
     finally:
         ocr.flush()
     best_score, active_order = ranked[0]
@@ -180,7 +200,7 @@ def sort_strips(
         "search": "exhaustive" if len(active) <= 8 else "mixed_integer_global",
         "optimal_for_pairwise_scores": active_order == pair_ranked[0][1],
         "matching": {
-            "method": "full-height edge ink and text-row traces; affine refinement and constrained local alignment",
+            "method": "full-height edge ink and text-row traces; shared FFT registration and constrained local alignment",
             "ordered_pairs_compared": len(active) * (len(active) - 1),
             "edge_weight": 0.8, "text_row_weight": 0.2,
             "affine_weight": 0.6, "locally_aligned_weight": 0.4,
@@ -188,13 +208,18 @@ def sort_strips(
         },
         "verification": {
             "ocr": ocr.metadata(),
+            "ocr_workers": verifier.workers,
             "visual_order": [active_labels[index] for index in visual_order],
             "pairwise_order": [active_labels[index] for index in pair_ranked[0][1]],
             "order_changed_by_verification": active_order != visual_order,
-            "pair_score_weights": {"visual": 0.65, "stroke": 0.05, "ocr_ink_evidence": 0.30} if ocr.enabled else {"visual": 1.0},
-            "pair_score_fallback": "Use the visual score alone when fewer than three text lines touch the join.",
-            "context_score_weights": {"pair_score": 0.8, "three_strip_ocr": 0.2} if refinement["enabled"] else {"pair_score": 1.0},
+            "pair_score_weights": {"visual": 0.5, "ocr_ink_evidence": 0.5} if ocr.enabled else {"visual": 1.0},
+            "pair_score_fallback": "All directed pairs remain available. Missing OCR evidence earns no text bonus. OCR-off mode uses all visual scores.",
+            "ocr_pairs_checked": sum(len(order) == 2 for order in verifier.cache) if ocr.enabled else 0,
+            "ocr_sampling": "Up to 24 text lines distributed over the full height; analysis height capped at 2400 pixels. Final-page OCR reads the complete analysis image.",
+            "candidate_selection": "Every directed pair is checked. Context search tests swaps, single moves, and moves of groups of up to six strips.",
+            "context_score_weights": {"pair_score": 0.25, "three_strip_ocr": 0.75} if refinement["enabled"] else {"pair_score": 1.0},
             "refinement": refinement,
+            "document_check": document_check,
             "html_report": f"{output_dir.name}/join_report.html", "json_report": f"{output_dir.name}/join_report.json",
         },
         "text_strip_count": len(active),
@@ -202,6 +227,7 @@ def sort_strips(
         "document_contents": "Text-bearing strips only. Low-ink strips stay in normalized_strips with unresolved positions.",
         "common_height": common_height,
         "mean_score": best_score / joins,
+        "score_kind": "full_page_ocr_ink_evidence" if document_check["enabled"] else "pairwise_or_context",
         "runner_up_gap": (best_score - ranked[1][0]) / joins if len(ranked) > 1 else None,
         "order": [
             {
@@ -238,12 +264,14 @@ def sort_strips(
         temporary.unlink(missing_ok=True)
     report["result"] = f"{output_dir.name}/document.png"
     write_join_reports(output_dir, join_report, verifier, active_order)
+    timings["total"] = round(perf_counter() - started, 3)
+    report["sorting_timings_seconds"] = timings
     write_json(output_dir.parent / "order.json", report)
     return report
 
 
 def sort_submission(
-    submission_dir: Path, *, ocr_mode: str = "auto", ocr_language: str = "eng", ocr_workers: int = 4,
+    submission_dir: Path, *, ocr_mode: str = "auto", ocr_language: str = "eng", ocr_workers: int = DEFAULT_OCR_WORKERS,
 ) -> dict:
     """Sort a submission's pooled strips and attach per-photo provenance."""
     submission = Submission(Path(submission_dir))
@@ -268,6 +296,8 @@ def sort_submission(
             entry["source_strip_number"] = provenance[name]["source_strip_number"]
     write_json(submission.order_path, report)
     manifest.update(status="complete", result="final_document/document.png", join_report="final_document/join_report.html")
+    manifest.pop("timings_seconds", None)
+    manifest["sorting_timings_seconds"] = report["sorting_timings_seconds"]
     manifest.pop("error", None)
     submission.save_manifest(manifest)
     return report
@@ -280,7 +310,7 @@ def main() -> None:
     )
     parser.add_argument("--ocr", choices=("auto", "required", "off"), default="auto")
     parser.add_argument("--ocr-language", default="eng", help="Installed Tesseract language(s), e.g. eng or eng+deu.")
-    parser.add_argument("--ocr-workers", type=int, default=4)
+    parser.add_argument("--ocr-workers", type=int, default=DEFAULT_OCR_WORKERS)
     args = parser.parse_args()
     try:
         report = sort_submission(args.submission_dir, ocr_mode=args.ocr,
