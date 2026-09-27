@@ -386,32 +386,85 @@ Server Script
 -->
 <script>
 const form = document.getElementById("uploadForm");
+const fileInput = document.getElementById("Upload");
 const status = document.getElementById("uploadStatus");
 
-form.addEventListener("submit", async (event) =>{
-  event.preventDefault();
+const originalImage = document.getElementById("originalImage");
+const originalMessage = document.getElementById("originalMessage");
 
-  const formData = new FormData(form);
+const editedMessage = document.getElementById("editedMessage");
 
-  status.textContent = "Uploading...";
 
-  try {
-    const response = await fetch("/upload", {
+form.addEventListener("submit", async (event) => {
 
-      method:"POST",
-      body: formData
-    });
+// Stop the entire webpage from reloading
+event.preventDefault();
 
-    if(response.ok){
-      status.textContent = "Image uploaded Successfully!";
-      form.reset();
-    }else{
-      status.textContent = "Upload failed.";
-    }
-  }catch (error){
-    console.error(error);
-    status.textContent = "Upload failed";
-  }
+const file = fileInput.files[0];
+
+// Make sure an image was selected
+if (!file) {
+status.textContent = "Please select an image first.";
+return;
+}
+
+
+// Show the selected image in the Original Image box
+const imageURL = URL.createObjectURL(file);
+
+originalImage.src = imageURL;
+originalImage.style.display = "block";
+
+originalMessage.style.display = "none";
+
+
+// Show upload status
+status.textContent = "Uploading...";
+
+// Eventually Python processing will happen here
+editedMessage.textContent = "Waiting for image processing...";
+
+
+// Send image to your server
+const formData = new FormData();
+
+formData.append("ImageUpload", file);
+
+
+try {
+
+const response = await fetch("/upload", {
+method: "POST",
+body: formData
+});
+
+
+if (response.ok) {
+
+status.textContent = "Image uploaded successfully!";
+
+editedMessage.textContent =
+"Image uploaded. Ready for processing.";
+
+} else {
+
+status.textContent = "Upload failed.";
+
+editedMessage.textContent =
+"Image could not be processed.";
+}
+
+
+} catch (error) {
+
+console.error(error);
+
+status.textContent = "Upload failed.";
+
+editedMessage.textContent =
+"Image could not be processed.";
+}
+
 });
 </script>
 </body>
