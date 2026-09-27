@@ -17,8 +17,7 @@ from time import perf_counter
 import cv2
 import numpy as np
 
-from strip_matching import (PairMatches, ink_fraction, ink_profiles, match_profiles,
-                            refine_row_maps_from_ink, stabilize_row_maps, strip_ink)
+from strip_matching import ink_fraction, ink_profiles, match_profiles
 from strip_order import optimize_orders
 from submission import Submission, write_json
 from strip_ocr import DEFAULT_OCR_WORKERS, TesseractOCR
@@ -60,37 +59,17 @@ def _extrapolate(points, coordinates, values):
 
 def assemble_preview(
     images: list[np.ndarray], order: tuple[int, ...], warps: np.ndarray, height: int,
-    original_heights: list[int] | None = None, matching_scores: np.ndarray | None = None,
 ) -> tuple[np.ndarray, list[dict]]:
     """Render the matched row maps; only the preview is resized and aligned."""
     rows = np.arange(height, dtype=np.float32)
     maps = [rows]
     for a, b in zip(order, order[1:]):
         maps.append(_extrapolate(maps[-1], rows, warps[a, b]))
-    if matching_scores is not None:
-        maps = stabilize_row_maps(order, maps, warps, matching_scores)
-        inks = []
-        for image in images:
-            ink = strip_ink(image)
-            if ink.shape[0] != height:
-                ink = cv2.resize(ink, (ink.shape[1], height))
-            trim = min(2, (ink.shape[1] - 4) // 2)
-            inks.append(ink[:, trim:-trim] if trim else ink)
-        maps = refine_row_maps_from_ink(order, maps, inks)
     bounds = [_extrapolate(np.array([0, height - 1]), mapping, rows) for mapping in maps]
     top = int(np.floor(min(bound[0] for bound in bounds)))
     bottom = int(np.ceil(max(bound[1] for bound in bounds))) + 1
     output_rows = np.arange(top, bottom, dtype=np.float32)
-    widths = [
-        max(1, round(images[i].shape[1] * height /
-                     (original_heights[i] if original_heights else images[i].shape[0])))
-        for i in order
-    ]
-    if original_heights is not None:
-        # Padding preserves source row spacing for matching. Use a shared
-        # display width so photos captured at different resolutions still
-        # render as strips from one sheet.
-        widths = [max(1, round(np.median(widths)))] * len(widths)
+    widths = [max(1, round(images[i].shape[1] * height / images[i].shape[0])) for i in order]
     preview = np.full((bottom - top, sum(widths), 3), 255, np.uint8)
     placements, x = [], 0
     for index, width, mapping, bound in zip(order, widths, maps, bounds):
@@ -108,62 +87,10 @@ def assemble_preview(
         y = int(np.floor(bound[0])) - top
         placements.append({
             "x": x, "y": y, "width": width, "height": int(np.ceil(bound[1])) - top - y + 1,
-            "alignment": "affine and local row offsets refined across nearby strips and ink seams",
+            "alignment": "affine plus smooth local row offsets",
         })
         x += width
     return preview, placements
-
-
-def prepare_matching_images(images: list[np.ndarray]) -> tuple[list[np.ndarray], int, bool]:
-    """Keep vertical pixel spacing when crop lengths vary substantially.
-
-    Fitting every strip to the median height can stretch one photo's text by
-    more than the registration search permits. Center transparent padding on
-    short strips instead; this preserves their source row spacing and leaves
-    the original PNGs untouched. Small length differences retain the existing
-    median-height analysis, which avoids unnecessary blank margins.
-    """
-    heights = [image.shape[0] for image in images]
-    median = int(np.median(heights))
-    if len(images) < 2 or (max(heights) - min(heights)) / median < 0.08:
-        return images, median, False
-    height = max(heights)
-    prepared = []
-    for image in images:
-        top = (height - image.shape[0]) // 2
-        canvas = np.zeros((height, image.shape[1], 4), np.uint8)
-        canvas[top:top + image.shape[0]] = image
-        prepared.append(canvas)
-    return prepared, height, True
-
-
-def supported_text_positions(fractions, active, scores, ocr_enabled):
-    """Leave near-blank pieces unresolved unless a specific text edge supports them.
-
-    A very faint page-edge strip can still be real. Its best match must stand
-    clearly above all other dense-strip matches before it enters the order.
-    This triage is used only on larger, text-rich pages with OCR evidence.
-    """
-    positions = list(range(len(active)))
-    if not ocr_enabled or len(active) < 12:
-        return positions
-    median = float(np.median([fractions[index] for index in active]))
-    if median < 0.04:
-        return positions
-    threshold = max(0.0005, 0.25 * median)
-    dense = [position for position in positions if fractions[active[position]] >= threshold]
-    if len(dense) < max(8, int(np.ceil(0.6 * len(active)))):
-        return positions
-    retained = set(dense)
-    for position in positions:
-        if position in retained:
-            continue
-        for values in (scores[dense, position], scores[position, dense]):
-            strongest = np.sort(values)[-2:]
-            if strongest[-1] >= 0.3 and strongest[-1] - strongest[-2] >= 0.1:
-                retained.add(position)
-                break
-    return sorted(retained)
 
 
 def sort_strips(
@@ -200,55 +127,30 @@ def sort_strips(
         if image is None:
             raise ValueError(f"Could not open {path}")
         images.append(image)
+    common_height = int(np.median([image.shape[0] for image in images]))
     fractions = [ink_fraction(image) for image in images]
     active = [index for index, fraction in enumerate(fractions) if fraction >= 0.0005]
     low_ink = [index for index in range(len(paths)) if index not in active]
     if not active:
         raise ValueError("No usable ink found; all strips are blank or too faint to order.")
-    active_images, common_height, preserved_spacing = prepare_matching_images(
-        [images[index] for index in active]
-    )
-    profiles = [ink_profiles(image, common_height) for image in active_images]
+    profiles = [ink_profiles(images[index], common_height) for index in active]
     if len(active) > 1 and not any(np.any(profile[:2] > 0) for profile in profiles):
         raise ValueError("No usable ink near the strip edges; cannot estimate an order.")
 
     ocr = TesseractOCR(ocr_mode, ocr_language, output_dir.parent / ".ocr_cache.json")
     stage = perf_counter()
-    matches = match_profiles(profiles, max_shift=round(common_height * 0.08) if preserved_spacing else None)
+    matches = match_profiles(profiles)
     timings["visual_matching"] = round(perf_counter() - stage, 3)
-    visual_pairs_compared = len(active) * (len(active) - 1)
+    scales, offsets = matches.scales, matches.offsets
+    active_images = [images[index] for index in active]
+    active_labels = [labels[index] for index in active]
+    visual_order = rank_orders(matches.scores, count=1)[0][1]
     verifier = JoinVerifier(active_images, matches, common_height, ocr, workers=ocr_workers)
-    print(f"Compared all {visual_pairs_compared} directed joins. OCR verification: {ocr.status}.", flush=True)
-    removed = []
+    print(f"Compared all {len(active) * (len(active) - 1)} directed joins. OCR verification: {ocr.status}.", flush=True)
     try:
         stage = perf_counter()
         scores = verifier.score_pairs()
         timings["pair_ocr"] = round(perf_counter() - stage, 3)
-        retained = supported_text_positions(fractions, active, scores, ocr.enabled)
-        if len(retained) < len(active):
-            removed = [active[position] for position in range(len(active)) if position not in retained]
-            low_ink = sorted([*low_ink, *removed])
-            old_verifier = verifier
-            old_to_new = {old: new for new, old in enumerate(retained)}
-            active = [active[position] for position in retained]
-            active_images = [active_images[position] for position in retained]
-            matches = PairMatches(
-                matches.scores[np.ix_(retained, retained)],
-                matches.scales[np.ix_(retained, retained)],
-                matches.offsets[np.ix_(retained, retained)],
-                matches.warps[np.ix_(retained, retained)],
-            )
-            scores = scores[np.ix_(retained, retained)]
-            verifier = JoinVerifier(active_images, matches, common_height, ocr, workers=ocr_workers)
-            verifier.cache = {
-                tuple(old_to_new[index] for index in order): reading
-                for order, reading in old_verifier.cache.items()
-                if all(index in old_to_new for index in order)
-            }
-            print(f"Left {len(removed)} near-blank strips unresolved.", flush=True)
-        scales, offsets = matches.scales, matches.offsets
-        active_labels = [labels[index] for index in active]
-        visual_order = rank_orders(matches.scores, count=1)[0][1]
         pair_ranked = rank_orders(scores)
         print("Refining the order using text across three neighboring strips..." if ocr.enabled
               else f"Visual-only ordering: {ocr.reason}", flush=True)
@@ -258,7 +160,7 @@ def sort_strips(
         if ocr.enabled:
             print("Checking the complete reconstructed page with OCR...", flush=True)
         stage = perf_counter()
-        ranked, document_check = verify_document_orders(ranked, pair_ranked, verifier, scores)
+        ranked, document_check = verify_document_orders(ranked, pair_ranked, verifier)
         if document_check["enabled"]:
             for key in ("baseline_order", "selected_order"):
                 document_check[key] = [active_labels[index] for index in document_check[key]]
@@ -271,27 +173,11 @@ def sort_strips(
         ocr.flush()
     best_score, active_order = ranked[0]
     preview, placements = assemble_preview(
-        active_images, active_order, matches.warps, common_height,
-        original_heights=[images[index].shape[0] for index in active] if preserved_spacing else None,
-        matching_scores=matches.scores,
+        active_images, active_order, matches.warps, common_height
     )
     order = tuple(active[index] for index in active_order) + tuple(low_ink)
     placements.extend([None] * len(low_ink))
     joins = max(1, len(active) - 1)
-    review_reasons = []
-    if removed:
-        review_reasons.append(f"{len(removed)} near-blank strips have unresolved positions.")
-    if len(active) > 1 and not ocr.enabled:
-        review_reasons.append("OCR verification was unavailable.")
-    if document_check["enabled"]:
-        suspect_count = len(document_check["suspect_joins"])
-        if suspect_count >= max(2, int(np.ceil((len(active) - 1) * 0.1))):
-            review_reasons.append(f"{suspect_count} joins have weak full-page text evidence.")
-        if document_check["final_score"] < 0.55:
-            review_reasons.append("The reconstructed page has low readability evidence.")
-    review_required = bool(review_reasons)
-    join_report["review_required"] = review_required
-    join_report["review_reasons"] = review_reasons
     alternative_edges = [set(zip(candidate, candidate[1:])) for _, candidate in ranked]
     join_details = []
     for a, b in zip(active_order, active_order[1:]):
@@ -309,21 +195,16 @@ def sort_strips(
         })
     report = {
         "estimated": True,
-        "review_required": review_required,
-        "review_reasons": review_reasons,
         "input_directories": [str(directory) for directory in directories],
         "assumptions": "Upright strips from one page; missing strips are not identified.",
         "search": "exhaustive" if len(active) <= 8 else "mixed_integer_global",
         "optimal_for_pairwise_scores": active_order == pair_ranked[0][1],
         "matching": {
-            "method": "full-height edge ink and text-row traces; shared FFT registration, constrained local alignment, and seam ink refinement",
-            "ordered_pairs_compared": visual_pairs_compared,
+            "method": "full-height edge ink and text-row traces; shared FFT registration and constrained local alignment",
+            "ordered_pairs_compared": len(active) * (len(active) - 1),
             "edge_weight": 0.8, "text_row_weight": 0.2,
             "affine_weight": 0.6, "locally_aligned_weight": 0.4,
             "low_ink_threshold": 0.0005,
-            "near_blank_rule": "On text-rich pages with OCR, strips below 25% of median ink are placed only when a directed join scores at least 0.30 and leads its alternatives by at least 0.10.",
-            "near_blank_unplaced": [labels[index] for index in removed],
-            "vertical_spacing_preserved": preserved_spacing,
         },
         "verification": {
             "ocr": ocr.metadata(),
@@ -343,11 +224,10 @@ def sort_strips(
         },
         "text_strip_count": len(active),
         "unplaced_low_ink_count": len(low_ink),
-        "document_contents": "Placed strips only. Low-ink strips stay in normalized_strips with unresolved positions.",
+        "document_contents": "Text-bearing strips only. Low-ink strips stay in normalized_strips with unresolved positions.",
         "common_height": common_height,
         "mean_score": best_score / joins,
-        "score_kind": "full_page_ocr_and_english_words" if document_check["enabled"] and document_check["final_reading"]["lexicon_used"]
-        else "full_page_ocr_ink_evidence" if document_check["enabled"] else "pairwise_or_context",
+        "score_kind": "full_page_ocr_ink_evidence" if document_check["enabled"] else "pairwise_or_context",
         "runner_up_gap": (best_score - ranked[1][0]) / joins if len(ranked) > 1 else None,
         "order": [
             {
@@ -415,8 +295,7 @@ def sort_submission(
             entry["source_image"] = provenance[name]["source_image"]
             entry["source_strip_number"] = provenance[name]["source_strip_number"]
     write_json(submission.order_path, report)
-    manifest.update(status="complete", result="final_document/document.png", join_report="final_document/join_report.html",
-                    review_required=report["review_required"])
+    manifest.update(status="complete", result="final_document/document.png", join_report="final_document/join_report.html")
     manifest.pop("timings_seconds", None)
     manifest["sorting_timings_seconds"] = report["sorting_timings_seconds"]
     manifest.pop("error", None)

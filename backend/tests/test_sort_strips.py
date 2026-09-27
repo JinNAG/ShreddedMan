@@ -9,83 +9,11 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sort_strips import prepare_matching_images, rank_orders, sort_strips, supported_text_positions
-from strip_matching import (_affine_matches, ink_profiles, match_profiles,
-                            refine_row_maps_from_ink, stabilize_row_maps)
+from sort_strips import rank_orders, sort_strips
+from strip_matching import _affine_matches, ink_profiles, match_profiles
 
 
 class StripSortingTests(unittest.TestCase):
-    def test_sparse_edge_needs_specific_support_while_blank_pieces_stay_unresolved(self):
-        fractions = [0.1] * 12 + [0.0006, 0.02, 0.005]
-        scores = np.full((15, 15), 0.1)
-        scores[11, 12] = 0.45
-        scores[10, 12] = 0.2
-        scores[11, 13] = 0.22
-        scores[10, 13] = 0.21
-        self.assertEqual(supported_text_positions(fractions, list(range(15)), scores, True),
-                         list(range(13)))
-        self.assertEqual(supported_text_positions(fractions, list(range(15)), scores, False),
-                         list(range(15)))
-
-    def test_nearby_reciprocal_matches_correct_an_outlier_row_offset(self):
-        rows = np.arange(200, dtype=np.float32)
-        offsets = [0, 10, 20, 30, 40]
-        warps = np.array([[rows + offsets[j] - offsets[i]
-                           for j in range(5)] for i in range(5)])
-        warps[2, 3] = rows + 180
-        warps[3, 2] = rows + 100
-        direct = [rows + value for value in (0, 10, 20, 200, 210)]
-        scores = np.full((5, 5), 0.8)
-        adjusted = stabilize_row_maps(tuple(range(5)), direct, warps, scores)
-        self.assertEqual([round(mapping[100] - 100) for mapping in adjusted], offsets)
-
-    def test_disconnected_weak_tail_does_not_disable_other_row_corrections(self):
-        rows = np.arange(200, dtype=np.float32)
-        offsets = [0, 10, 20, 30, 40, 50]
-        warps = np.array([[rows + offsets[j] - offsets[i]
-                           for j in range(6)] for i in range(6)])
-        warps[2, 3] = rows + 180
-        warps[3, 2] = rows + 100
-        for index in range(2, 5):
-            warps[index, 5] = rows + 180
-            warps[5, index] = rows + 100
-        direct = [rows + value for value in (0, 10, 20, 200, 210, 260)]
-        scores = np.full((6, 6), 0.8)
-        adjusted = stabilize_row_maps(tuple(range(6)), direct, warps, scores)
-        self.assertEqual([round(mapping[100] - 100) for mapping in adjusted[:5]], offsets[:5])
-        self.assertEqual(round(adjusted[5][100] - 100), 260)
-
-    def test_seam_ink_refines_a_small_row_jump_without_moving_aligned_strips(self):
-        height = 1500
-        rows = np.arange(height, dtype=np.float32)
-        rng = np.random.default_rng(57)
-        centers = np.arange(60, height - 60, 50) + rng.integers(-9, 10, 28)
-        signal = np.zeros(height, np.float32)
-        for center in centers:
-            signal += np.exp(-0.5 * ((rows - center) / 3) ** 2)
-        inks = [np.tile(np.clip(signal, 0, 1)[:, None], (1, 24)) for _ in range(5)]
-        maps = [rows.copy() for _ in inks]
-        maps[2] += 7
-        adjusted = refine_row_maps_from_ink(tuple(range(5)), maps, inks)
-        self.assertAlmostEqual(adjusted[0][750] - maps[0][750], 0, delta=0.1)
-        offsets = [mapping[750] - rows[750] for mapping in adjusted]
-        self.assertLess(max(abs(b - a) for a, b in zip(offsets, offsets[1:])), 3)
-        self.assertLess(abs(offsets[2]), 3)
-
-    def test_large_crop_height_difference_preserves_text_row_spacing(self):
-        short = np.full((100, 20, 4), 255, np.uint8)
-        tall = np.full((120, 20, 4), 255, np.uint8)
-        short[40:44, :, :3] = 0
-        prepared, height, preserved = prepare_matching_images([short, tall])
-        self.assertTrue(preserved)
-        self.assertEqual(height, 120)
-        np.testing.assert_array_equal(prepared[0][10:110], short)
-        self.assertTrue(np.all(prepared[0][:10, :, 3] == 0))
-        self.assertTrue(np.all(prepared[0][110:, :, 3] == 0))
-        opaque_ink = (prepared[0][:, :, :3] == 0).any(axis=2) & (prepared[0][:, :, 3] > 0)
-        self.assertEqual(np.flatnonzero(opaque_ink.any(axis=1)).tolist(),
-                         [50, 51, 52, 53])
-
     def test_shared_fft_matches_direct_full_height_correlation(self):
         # Check both directions and positive/negative shifts independently of
         # FFT implementation details, including the zero padding at the tips.

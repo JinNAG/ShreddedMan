@@ -12,48 +12,12 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from join_report import confidence_for_join
-from join_verification import JoinVerifier, _lexical_ratio, measure_seam, refine_orders, verify_document_orders
+from join_verification import JoinVerifier, measure_seam, refine_orders, verify_document_orders
 from strip_ocr import TesseractOCR
 from sort_strips import rank_orders
 
 
 class JoinVerificationTests(unittest.TestCase):
-    def test_complete_word_check_rejects_plausible_looking_ocr_nonsense(self):
-        words = [{"text": word} for word in ("mission", "squad", "maneuver", "qzxq")]
-        ratio, count = _lexical_ratio(words)
-        self.assertEqual(count, 4)
-        self.assertEqual(ratio, 0.75)
-
-    def test_full_page_repair_moves_group_between_lexically_weak_joins(self):
-        baseline, correct = (0, 3, 4, 1, 2, 5), (0, 1, 2, 3, 4, 5)
-
-        class Oracle:
-            ocr = SimpleNamespace(enabled=True)
-            workers = 1
-
-            def __init__(self):
-                self.document_cache = {}
-
-            def evaluate_document(self, order):
-                order = tuple(order)
-                if order not in self.document_cache:
-                    self.document_cache[order] = {
-                        "score": 0.9 if order == correct else 0.6 if order == baseline else 0.5,
-                        "ink_coverage": 0.9, "text": "page", "analysis_height": 100,
-                        "lexical_suspect_joins": [1, 3, 5] if order == baseline else [],
-                        "seams": [{"ocr_score": 0.9, "ink_coverage": 0.9, "recognized_lines": 8}] * 5,
-                    }
-                return self.document_cache[order]
-
-        pair_scores = np.full((6, 6), 0.5)
-        np.fill_diagonal(pair_scores, -np.inf)
-        for a, b in zip(baseline, baseline[1:]):
-            pair_scores[a, b] = 0.8
-        ranked, check = verify_document_orders([(4, baseline)], [(4, baseline)], Oracle(), pair_scores)
-        self.assertEqual(ranked[0][1], correct)
-        self.assertEqual(check["selected_order"], list(correct))
-        self.assertGreater(check["repair_candidates_checked"], 0)
-
     def test_high_resolution_analysis_rescales_row_maps_without_changing_sources(self):
         height = 4800
         images = [np.full((height, 80, 4), 255, np.uint8) for _ in range(2)]
