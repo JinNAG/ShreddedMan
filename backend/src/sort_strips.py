@@ -167,6 +167,12 @@ def sort_strips(
             for candidate in document_check["candidates"]:
                 candidate["order"] = [active_labels[index] for index in candidate["order"]]
         timings["document_verification"] = round(perf_counter() - stage, 3)
+        stage = perf_counter()
+        # Updates the row maps shared with the preview below.
+        # Positive line shifts move the right strip's text up against the left strip.
+        line_corrections = [{**item, "left": active_labels[item["left"]], "right": active_labels[item["right"]]}
+                            for item in verifier.correct_line_offsets(ranked[0][1])]
+        timings["line_offset_check"] = round(perf_counter() - stage, 3)
         join_report = build_join_report(ranked[0][1], ranked, scores, verifier, active_labels, refinement,
                                         document_check=document_check)
     finally:
@@ -223,6 +229,7 @@ def sort_strips(
             "context_score_weights": {"pair_score": 0.25, "three_strip_ocr": 0.75} if refinement["enabled"] else {"pair_score": 1.0},
             "refinement": refinement,
             "document_check": document_check,
+            "line_offset_corrections": line_corrections,
             "html_report": f"{output_dir.name}/join_report.html", "json_report": f"{output_dir.name}/join_report.json",
         },
         "text_strip_count": len(active),
