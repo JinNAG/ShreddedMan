@@ -3,3 +3,10 @@ __pycache__/
 .venv/
 .DS_Store
 .ocr_cache.json
+.img/
+
+# Runtime submissions and temporary uploads; keep curated photo fixtures.
+/backend/img/*/
+!/backend/img/error_images/
+!/backend/img/good_images/
+/uploads/

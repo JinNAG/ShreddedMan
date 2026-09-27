@@ -121,11 +121,12 @@ app.post("/upload", upload.array("ImageUpload", 20), async (req, res) => {
     }
 });
 
-app.get(["/api/submissions/:id", "/api/submissions/:id/document"], async (req, res) => {
+app.get(["/api/submissions/:id", "/api/submissions/:id/document", "/api/submissions/:id/join-report",
+    "/api/submissions/:id/document.png", "/api/submissions/:id/join_report.json"], async (req, res) => {
     if (!/^[0-9a-f]{32}$/.test(req.params.id)) {
         return res.status(404).json({ detail: "Submission not found." });
     }
-    const suffix = req.path.endsWith("/document") ? "/document" : "";
+    const suffix = req.path.slice(`/api/submissions/${req.params.id}`.length);
     await forwardBackend(`/api/submissions/${req.params.id}${suffix}`, res);
 });
 

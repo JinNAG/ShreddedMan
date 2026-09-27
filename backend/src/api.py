@@ -39,6 +39,8 @@ class SubmissionStatus(BaseModel):
     ]
     status_url: str
     document_url: str | None = None
+    join_report_url: str | None = None
+    review_required: bool = False
     error: str | None = None
 
 
@@ -167,6 +169,10 @@ def create_app(img_root: Path | None = None) -> FastAPI:
             document_url=f"{status_url}/document"
             if manifest["status"] == "complete"
             else None,
+            join_report_url=f"{status_url}/join-report"
+            if manifest["status"] == "complete"
+            else None,
+            review_required=manifest["status"] == "complete" and bool(manifest.get("review_required", False)),
             error="Document reconstruction failed. Check the photos and try again."
             if failed
             else None,
@@ -234,6 +240,7 @@ def create_app(img_root: Path | None = None) -> FastAPI:
         response_class=FileResponse,
         responses={200: {"content": {"image/png": {}}}},
     )
+    @application.get("/api/submissions/{submission_id}/document.png", include_in_schema=False)
     def submission_document(submission_id: str) -> FileResponse:
         submission = find_submission(submission_id)
         if submission.read_manifest()["status"] != "complete":
@@ -249,6 +256,26 @@ def create_app(img_root: Path | None = None) -> FastAPI:
             filename="document.png",
             content_disposition_type="inline",
         )
+
+    @application.get("/api/submissions/{submission_id}/join-report", response_class=FileResponse)
+    def submission_join_report(submission_id: str) -> FileResponse:
+        submission = find_submission(submission_id)
+        if submission.read_manifest()["status"] != "complete":
+            raise HTTPException(409, "The join report is not available yet.")
+        path = (submission.final_document / "join_report.html").resolve()
+        if not path.is_relative_to(submission.directory) or not path.is_file():
+            raise HTTPException(404, "Join report not found.")
+        return FileResponse(path, media_type="text/html", content_disposition_type="inline")
+
+    @application.get("/api/submissions/{submission_id}/join_report.json", include_in_schema=False)
+    def submission_join_report_json(submission_id: str) -> FileResponse:
+        submission = find_submission(submission_id)
+        if submission.read_manifest()["status"] != "complete":
+            raise HTTPException(409, "The join report is not available yet.")
+        path = (submission.final_document / "join_report.json").resolve()
+        if not path.is_relative_to(submission.directory) or not path.is_file():
+            raise HTTPException(404, "Join report not found.")
+        return FileResponse(path, media_type="application/json", content_disposition_type="inline")
 
     return application
 
