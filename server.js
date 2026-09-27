@@ -16,7 +16,6 @@ const fs = require("fs");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const procGo = false;
 
 // Make sure uploads directory exists
 const uploadDirectory = path.join(__dirname, "uploads");
@@ -30,9 +29,7 @@ if (!fs.existsSync(uploadDirectory)) {
 
 if(!fs.existsSync(processDirectory)){
     console.log("Backend folder for processing is missing");
-    procGo = false;
-}else {
-    procGo = true;
+    
 }
 
 // Configure how uploaded files are stored
