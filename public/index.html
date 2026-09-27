@@ -90,10 +90,28 @@
 
     /* ---- Left Sidebar ---- */
     .sidebar {
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
       background: #d7cfbf;
       width: 220px;
       padding: 25px 20px;
       min-height: 700px;
+    }
+
+    .sidebar-art {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      z-index: -1;
+      width: 950px;
+      height: 260px;
+      max-width: none;
+      object-fit: cover;
+      object-position: center;
+      transform: translate(-50%, -50%) rotate(90deg);
+      opacity: 0.25;
+      pointer-events: none;
     }
 
     .sidebar ul {
@@ -122,7 +140,7 @@
       justify-content: center;
       font-size: 12px;
       color: #556;
-      margin: 20px 0;
+      margin: 20px auto;
     }
 
     .availability-box {
@@ -378,6 +396,7 @@
   <div class="page">
 
     <div class="sidebar">
+      <img class="sidebar-art" src="webImg/pillar2.png" alt="" aria-hidden="true">
       <ul>
         <li><a href="#">Criminal Defence</a></li>
         <li><a href="#">Public Defense</a></li>
