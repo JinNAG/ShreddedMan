@@ -102,8 +102,10 @@ def measure_seam(ink: np.ndarray, seam: int, words: list[dict],
     lexical_score, sequences = None, 0
     if fragments is not None:
         plausible, sequences = lexical_evidence(crossing, fragments)
-        # Smoothing keeps joins with little readable text near neutral.
-        lexical_score = (plausible + 1) / (sequences + 2)
+        # With few letters to check, fall back to the ink evidence. A neutral
+        # prior would reward blank margins joined to each other over a real
+        # join whose text OCR garbled.
+        lexical_score = (plausible + 2 * evidence_score) / (sequences + 2)
     return {
         "ocr_score": evidence_score, "ocr_confidence": float(np.mean([w["confidence"] for w in crossing])) if crossing else 0.0,
         "ink_coverage": coverage, "stroke_score": float(np.clip(stroke, 0, 1)),
@@ -371,23 +373,31 @@ def verify_document_orders(ranked, pair_ranked, verifier):
     orders = list(dict.fromkeys([baseline, *[order for _, order in ranked[:3]]]))
     with ThreadPoolExecutor(max_workers=verifier.workers) as pool:
         readings = list(pool.map(verifier.evaluate_document, orders))
+    # Moving strips shifts the page layout, so Tesseract rereads unchanged
+    # joins slightly differently. Summed over a page, that noise can exceed the
+    # evidence at the joins that changed. Hold joins shared with the baseline
+    # at the baseline's reading, so only the changed joins decide.
+    shared = dict(zip(zip(baseline, baseline[1:]), readings[0]["seams"]))
+    totals = [sum(text_evidence(shared.get(join, seam)) for join, seam in zip(zip(order, order[1:]), reading["seams"]))
+              for order, reading in zip(orders, readings)]
     # On a tie, retain the pairwise baseline instead of making an unsupported
     # change. Every candidate includes every strip exactly once.
-    selected = min(range(len(orders)), key=lambda i: (-readings[i]["score"], orders[i] != baseline, orders[i]))
+    selected = min(range(len(orders)), key=lambda i: (-totals[i], orders[i] != baseline, orders[i]))
     final_order, final = orders[selected], readings[selected]
     count = len(final_order) - 1
-    result = sorted(((reading["score"] * count, order) for order, reading in zip(orders, readings)),
-                    key=lambda item: (-item[0], item[1] != baseline, item[1]))
+    result = sorted(zip(totals, orders), key=lambda item: (-item[0], item[1] != baseline, item[1]))
     summary = {key: value for key, value in final.items() if key != "seams"}
     return result, {
         "enabled": True, "method": ("Full-page OCR evidence at every join: readable ink, plus English "
-                                    "letter-sequence plausibility when available; no text correction."),
+                                    "letter-sequence plausibility when available; no text correction. "
+                                    "Candidates are compared at the joins that differ from the pairwise order."),
         "score_note": "Heuristic readability evidence, not an accuracy percentage or proof of a correct order.",
         "baseline_order": list(baseline), "selected_order": list(final_order),
-        "baseline_score": readings[0]["score"], "final_score": final["score"],
+        "baseline_score": totals[0] / count, "final_score": totals[selected] / count,
         "changed_from_pairwise": final_order != baseline, "evaluated_orders": len(orders),
-        "candidates": [{"order": list(order), "score": reading["score"], "ink_coverage": reading["ink_coverage"]}
-                       for order, reading in zip(orders, readings)],
+        "candidates": [{"order": list(order), "score": total / count, "page_score": reading["score"],
+                        "ink_coverage": reading["ink_coverage"]}
+                       for order, total, reading in zip(orders, totals, readings)],
         "suspect_joins": [i for i, item in enumerate(final["seams"], 1)
                           if item["ocr_score"] < 0.55 or item["ink_coverage"] < 0.5 or item["recognized_lines"] < 3],
         "final_reading": summary,
