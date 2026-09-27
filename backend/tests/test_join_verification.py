@@ -90,6 +90,28 @@ class JoinVerificationTests(unittest.TestCase):
         self.assertGreaterEqual(report["final_score"], report["baseline_score"])
         self.assertEqual(report["evaluated_orders"], 2)
 
+    def test_page_rereading_noise_cannot_move_the_first_strip_to_the_end(self):
+        # Only the first join differs: a weak real join versus blank margins
+        # wrapped together. Shifting the layout rereads shared joins higher.
+        baseline, wrapped = (0, 1, 2, 3), (1, 2, 3, 0)
+
+        class Oracle:
+            ocr = SimpleNamespace(enabled=True)
+            workers = 1
+
+            def evaluate_document(self, order):
+                values = {(0, 1): 0.3, (1, 2): 0.7, (2, 3): 0.7} if order == baseline else \
+                         {(1, 2): 0.9, (2, 3): 0.9, (3, 0): 0.0}
+                seams = [{"ocr_score": values[join], "ink_coverage": 1, "recognized_lines": 8}
+                         for join in zip(order, order[1:])]
+                return {"score": float(np.mean(list(values.values()))), "ink_coverage": 1, "text": "page",
+                        "analysis_height": 100, "seams": seams}
+
+        ranked, report = verify_document_orders([(3, wrapped)], [(2, baseline)], Oracle())
+        self.assertEqual(ranked[0][1], baseline)
+        self.assertFalse(report["changed_from_pairwise"])
+        self.assertGreater(report["candidates"][1]["page_score"], report["candidates"][0]["page_score"])
+
     def test_compact_ocr_covers_both_page_ends_and_restores_coordinates(self):
         class ReadingOracle:
             enabled = True
@@ -195,6 +217,17 @@ class JoinVerificationTests(unittest.TestCase):
         self.assertGreater(correct["lexical_score"], 0.8)
         self.assertLess(wrong["lexical_score"], 0.4)
         self.assertGreater(text_evidence(correct), text_evidence(wrong))
+
+    def test_blank_margins_joined_together_earn_no_english_bonus(self):
+        # The page's right margin wrapped onto its left margin: no text crosses.
+        ink = np.zeros((100, 80), np.float32)
+        ink[15:25, 60:70] = 1
+        blank = measure_seam(ink, 40, [], english_fragments())
+        garbled = measure_seam(ink, 65, [{"text": "sweihe", "confidence": 0.5, "box": [55, 10, 20, 20]}],
+                               english_fragments())
+        self.assertEqual(blank["lexical_score"], 0)
+        self.assertEqual(text_evidence(blank), 0)
+        self.assertGreater(text_evidence(garbled), text_evidence(blank))
 
     def test_ink_evidence_is_unchanged_without_an_english_word_list(self):
         ink = np.zeros((100, 80), np.float32)
