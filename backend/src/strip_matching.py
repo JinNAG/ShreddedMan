@@ -166,6 +166,80 @@ class PairMatches:
     warps: np.ndarray  # warps[A,B,y_A] is the corresponding row in B.
 
 
+def stabilize_row_maps(order, maps, warps, scores):
+    """Correct accumulated row offsets using consistent nearby comparisons.
+
+    A single neighbor match can lock onto another text line and shift every
+    strip that follows it. Nearby non-neighbors provide independent checks.
+    Only reciprocal matches with a connected, low-residual consensus are used.
+    A weak strip can be disconnected without disabling the consensus among
+    the other strips. The local row bends of each strip stay intact.
+    """
+    count = len(order)
+    if count < 4:
+        return maps
+    height = len(maps[0])
+    center = (height - 1) // 2
+    edges = []
+    for i, left in enumerate(order):
+        for j in range(i + 1, min(i + 4, count)):
+            right = order[j]
+            forward = float(warps[left, right, center] - center)
+            reverse = float(warps[right, left, center] - center)
+            if abs(forward + reverse) > max(25, height * 0.025):
+                continue
+            weight = max(0.05, min(float(scores[left, right]), float(scores[right, left])))
+            edges.append((i, j, (forward - reverse) / 2, weight))
+    neighbors = [set() for _ in range(count)]
+    for i, j, _, _ in edges:
+        neighbors[i].add(j)
+        neighbors[j].add(i)
+    adjusted = list(maps)
+    visited = set()
+    for start in range(count):
+        if start in visited:
+            continue
+        component = set()
+        pending = [start]
+        while pending:
+            vertex = pending.pop()
+            if vertex in component:
+                continue
+            component.add(vertex)
+            pending.extend(neighbors[vertex] - component)
+        visited.update(component)
+        # A pair or triple has no independent check on a bad row match.
+        if len(component) < 4:
+            continue
+        positions = sorted(component)
+        columns = {position: index for index, position in enumerate(positions[1:])}
+        component_edges = [edge for edge in edges if edge[0] in component]
+        matrix = np.zeros((len(component_edges), len(component) - 1))
+        expected = np.empty(len(component_edges))
+        weights = np.empty(len(component_edges))
+        for row, (i, j, delta, weight) in enumerate(component_edges):
+            if i in columns:
+                matrix[row, columns[i]] = -1
+            if j in columns:
+                matrix[row, columns[j]] = 1
+            expected[row], weights[row] = delta, weight
+        fit = np.linalg.lstsq(matrix * weights[:, None], expected * weights, rcond=None)[0]
+        for _ in range(8):
+            residual = matrix @ fit - expected
+            robust_weights = weights / np.sqrt(1 + (residual / 25) ** 2)
+            fit = np.linalg.lstsq(matrix * robust_weights[:, None], expected * robust_weights, rcond=None)[0]
+        if np.percentile(abs(matrix @ fit - expected), 90) > max(30, height * 0.02):
+            continue
+        anchor = positions[0]
+        anchor_offset = maps[anchor][center] - center
+        for position, relative_offset in zip(positions[1:], fit):
+            target_offset = anchor_offset + relative_offset
+            adjusted[position] = maps[position] + (
+                target_offset - (maps[position][center] - center)
+            )
+    return adjusted
+
+
 def match_profiles(
     profiles: list[np.ndarray], max_shift: int | None = None, scale_range: float = 0.04
 ) -> PairMatches:

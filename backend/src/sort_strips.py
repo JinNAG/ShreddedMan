@@ -17,7 +17,7 @@ from time import perf_counter
 import cv2
 import numpy as np
 
-from strip_matching import ink_fraction, ink_profiles, match_profiles
+from strip_matching import ink_fraction, ink_profiles, match_profiles, stabilize_row_maps
 from strip_order import optimize_orders
 from submission import Submission, write_json
 from strip_ocr import DEFAULT_OCR_WORKERS, TesseractOCR
@@ -59,17 +59,29 @@ def _extrapolate(points, coordinates, values):
 
 def assemble_preview(
     images: list[np.ndarray], order: tuple[int, ...], warps: np.ndarray, height: int,
+    original_heights: list[int] | None = None, matching_scores: np.ndarray | None = None,
 ) -> tuple[np.ndarray, list[dict]]:
     """Render the matched row maps; only the preview is resized and aligned."""
     rows = np.arange(height, dtype=np.float32)
     maps = [rows]
     for a, b in zip(order, order[1:]):
         maps.append(_extrapolate(maps[-1], rows, warps[a, b]))
+    if matching_scores is not None:
+        maps = stabilize_row_maps(order, maps, warps, matching_scores)
     bounds = [_extrapolate(np.array([0, height - 1]), mapping, rows) for mapping in maps]
     top = int(np.floor(min(bound[0] for bound in bounds)))
     bottom = int(np.ceil(max(bound[1] for bound in bounds))) + 1
     output_rows = np.arange(top, bottom, dtype=np.float32)
-    widths = [max(1, round(images[i].shape[1] * height / images[i].shape[0])) for i in order]
+    widths = [
+        max(1, round(images[i].shape[1] * height /
+                     (original_heights[i] if original_heights else images[i].shape[0])))
+        for i in order
+    ]
+    if original_heights is not None:
+        # Padding preserves source row spacing for matching. Use a shared
+        # display width so photos captured at different resolutions still
+        # render as strips from one sheet.
+        widths = [max(1, round(np.median(widths)))] * len(widths)
     preview = np.full((bottom - top, sum(widths), 3), 255, np.uint8)
     placements, x = [], 0
     for index, width, mapping, bound in zip(order, widths, maps, bounds):
@@ -87,10 +99,33 @@ def assemble_preview(
         y = int(np.floor(bound[0])) - top
         placements.append({
             "x": x, "y": y, "width": width, "height": int(np.ceil(bound[1])) - top - y + 1,
-            "alignment": "affine plus smooth local row offsets",
+            "alignment": "affine and local row offsets stabilized across nearby strips",
         })
         x += width
     return preview, placements
+
+
+def prepare_matching_images(images: list[np.ndarray]) -> tuple[list[np.ndarray], int, bool]:
+    """Keep vertical pixel spacing when crop lengths vary substantially.
+
+    Fitting every strip to the median height can stretch one photo's text by
+    more than the registration search permits. Center transparent padding on
+    short strips instead; this preserves their source row spacing and leaves
+    the original PNGs untouched. Small length differences retain the existing
+    median-height analysis, which avoids unnecessary blank margins.
+    """
+    heights = [image.shape[0] for image in images]
+    median = int(np.median(heights))
+    if len(images) < 2 or (max(heights) - min(heights)) / median < 0.08:
+        return images, median, False
+    height = max(heights)
+    prepared = []
+    for image in images:
+        top = (height - image.shape[0]) // 2
+        canvas = np.zeros((height, image.shape[1], 4), np.uint8)
+        canvas[top:top + image.shape[0]] = image
+        prepared.append(canvas)
+    return prepared, height, True
 
 
 def sort_strips(
@@ -127,22 +162,23 @@ def sort_strips(
         if image is None:
             raise ValueError(f"Could not open {path}")
         images.append(image)
-    common_height = int(np.median([image.shape[0] for image in images]))
     fractions = [ink_fraction(image) for image in images]
     active = [index for index, fraction in enumerate(fractions) if fraction >= 0.0005]
     low_ink = [index for index in range(len(paths)) if index not in active]
     if not active:
         raise ValueError("No usable ink found; all strips are blank or too faint to order.")
-    profiles = [ink_profiles(images[index], common_height) for index in active]
+    active_images, common_height, preserved_spacing = prepare_matching_images(
+        [images[index] for index in active]
+    )
+    profiles = [ink_profiles(image, common_height) for image in active_images]
     if len(active) > 1 and not any(np.any(profile[:2] > 0) for profile in profiles):
         raise ValueError("No usable ink near the strip edges; cannot estimate an order.")
 
     ocr = TesseractOCR(ocr_mode, ocr_language, output_dir.parent / ".ocr_cache.json")
     stage = perf_counter()
-    matches = match_profiles(profiles)
+    matches = match_profiles(profiles, max_shift=round(common_height * 0.08) if preserved_spacing else None)
     timings["visual_matching"] = round(perf_counter() - stage, 3)
     scales, offsets = matches.scales, matches.offsets
-    active_images = [images[index] for index in active]
     active_labels = [labels[index] for index in active]
     visual_order = rank_orders(matches.scores, count=1)[0][1]
     verifier = JoinVerifier(active_images, matches, common_height, ocr, workers=ocr_workers)
@@ -160,7 +196,7 @@ def sort_strips(
         if ocr.enabled:
             print("Checking the complete reconstructed page with OCR...", flush=True)
         stage = perf_counter()
-        ranked, document_check = verify_document_orders(ranked, pair_ranked, verifier)
+        ranked, document_check = verify_document_orders(ranked, pair_ranked, verifier, scores)
         if document_check["enabled"]:
             for key in ("baseline_order", "selected_order"):
                 document_check[key] = [active_labels[index] for index in document_check[key]]
@@ -173,11 +209,25 @@ def sort_strips(
         ocr.flush()
     best_score, active_order = ranked[0]
     preview, placements = assemble_preview(
-        active_images, active_order, matches.warps, common_height
+        active_images, active_order, matches.warps, common_height,
+        original_heights=[images[index].shape[0] for index in active] if preserved_spacing else None,
+        matching_scores=matches.scores,
     )
     order = tuple(active[index] for index in active_order) + tuple(low_ink)
     placements.extend([None] * len(low_ink))
     joins = max(1, len(active) - 1)
+    review_reasons = []
+    if len(active) > 1 and not ocr.enabled:
+        review_reasons.append("OCR verification was unavailable.")
+    if document_check["enabled"]:
+        suspect_count = len(document_check["suspect_joins"])
+        if suspect_count >= max(2, int(np.ceil((len(active) - 1) * 0.1))):
+            review_reasons.append(f"{suspect_count} joins have weak full-page text evidence.")
+        if document_check["final_score"] < 0.55:
+            review_reasons.append("The reconstructed page has low readability evidence.")
+    review_required = bool(review_reasons)
+    join_report["review_required"] = review_required
+    join_report["review_reasons"] = review_reasons
     alternative_edges = [set(zip(candidate, candidate[1:])) for _, candidate in ranked]
     join_details = []
     for a, b in zip(active_order, active_order[1:]):
@@ -195,6 +245,8 @@ def sort_strips(
         })
     report = {
         "estimated": True,
+        "review_required": review_required,
+        "review_reasons": review_reasons,
         "input_directories": [str(directory) for directory in directories],
         "assumptions": "Upright strips from one page; missing strips are not identified.",
         "search": "exhaustive" if len(active) <= 8 else "mixed_integer_global",
@@ -205,6 +257,7 @@ def sort_strips(
             "edge_weight": 0.8, "text_row_weight": 0.2,
             "affine_weight": 0.6, "locally_aligned_weight": 0.4,
             "low_ink_threshold": 0.0005,
+            "vertical_spacing_preserved": preserved_spacing,
         },
         "verification": {
             "ocr": ocr.metadata(),
@@ -227,7 +280,8 @@ def sort_strips(
         "document_contents": "Text-bearing strips only. Low-ink strips stay in normalized_strips with unresolved positions.",
         "common_height": common_height,
         "mean_score": best_score / joins,
-        "score_kind": "full_page_ocr_ink_evidence" if document_check["enabled"] else "pairwise_or_context",
+        "score_kind": "full_page_ocr_and_english_words" if document_check["enabled"] and document_check["final_reading"]["lexicon_used"]
+        else "full_page_ocr_ink_evidence" if document_check["enabled"] else "pairwise_or_context",
         "runner_up_gap": (best_score - ranked[1][0]) / joins if len(ranked) > 1 else None,
         "order": [
             {
@@ -295,7 +349,8 @@ def sort_submission(
             entry["source_image"] = provenance[name]["source_image"]
             entry["source_strip_number"] = provenance[name]["source_strip_number"]
     write_json(submission.order_path, report)
-    manifest.update(status="complete", result="final_document/document.png", join_report="final_document/join_report.html")
+    manifest.update(status="complete", result="final_document/document.png", join_report="final_document/join_report.html",
+                    review_required=report["review_required"])
     manifest.pop("timings_seconds", None)
     manifest["sorting_timings_seconds"] = report["sorting_timings_seconds"]
     manifest.pop("error", None)

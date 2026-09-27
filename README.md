@@ -95,6 +95,8 @@ competing neighbors, and image snippets of weak text regions. The matching
 `join_report.json` includes all recognized fragments and per-line checks for
 application use. Confidence is a heuristic support score, **not a probability
 of correctness**; broken text may remain even at a high score.
+The API also returns `review_required` and `join_report_url` for a completed
+reconstruction. The website links to the join report when review is suggested.
 
 OCR defaults to `--ocr auto`: use Tesseract when available, otherwise keep
 visual sorting and explicitly report that OCR is unavailable. Require it with:
@@ -163,6 +165,7 @@ API origin. Both servers must be running. Restart Node after editing `server.js`
 | POST | `/api/submissions` | Upload photos; receive a submission ID and status URL (HTTP 202). |
 | GET | `/api/submissions/{id}` | Check progress and get the result URL or error. |
 | GET | `/api/submissions/{id}/document` | Retrieve the completed PNG. |
+| GET | `/api/submissions/{id}/join-report` | Review weak joins in HTML. |
 
 Send photos of one document in the multipart field `files`, with optional
 `rotation` (`auto`, `0`, `90`, `180`, or `270`). Poll the returned `status_url`
@@ -176,21 +179,30 @@ unfinished jobs must be resubmitted after a forced stop.
 
 Sorting compares all ordered pairs using full-height edge ink and text-row
 alignment, with vertical scale/offset search and small smooth local corrections.
+When text-bearing crops differ in height by at least 8% of their median, the
+analysis centers short strips in transparent padding. This preserves their
+vertical pixel spacing; saved strip PNGs are unchanged.
+The final page also checks nearby strips against each other to correct a
+vertical offset when one adjacent match locks onto the wrong text line.
 With OCR enabled, each pair is also reconstructed and analyzed with dictionary
 correction disabled, allowing incomplete words and names. OCR rewards readable
 ink near the cut and penalizes unrecognized ink, rather than trusting only the
 characters that happened to be recognized. The pair score combines visual
-matching (65%), stroke continuity (5%), and OCR ink evidence (30%); joins with
-fewer than three text lines retain their visual score.
+matching (50%) and OCR ink evidence (50%). Stroke continuity is shown in the
+report as supporting evidence.
 
 The first ordering maximizes the sum of adjacent-pair scores. Exhaustive search
 handles up to eight text strips; larger samples use an integer optimizer. The
 strongest orders (up to five) then undergo OCR checks across three neighboring strips.
-Up to two refinement rounds examine the 24 best untested swaps/moves ranked by
+Up to four refinement rounds examine the 24 best untested swaps/moves ranked by
 pair score, including non-adjacent changes. A change must improve the complete
-objective (80% mean pair score, 20% mean three-strip OCR evidence), including
+objective (25% mean pair score, 75% mean three-strip OCR evidence), including
 joins it might damage elsewhere. This bounded context search does not guarantee
 the globally best order or continue indefinitely until text looks correct.
+The full-page check also measures how many complete English OCR words appear in
+the bundled public-domain Webster word list. It uses that evidence to test
+block moves across weak joins. These checks rank candidates; they never alter
+the photographed text. Non-English OCR keeps the ink-only page check.
 
 Strips must be upright and belong to one page. Similar letter fragments, damaged
 cuts, language mismatches, and missing strips can still produce incorrect

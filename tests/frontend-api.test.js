@@ -15,6 +15,7 @@ const imageBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAA
 const id = "0123456789abcdef0123456789abcdef";
 const statusURL = `/api/submissions/${id}`;
 const documentURL = `${statusURL}/document`;
+const reportURL = `${statusURL}/join-report`;
 const quietConsole = { log() {}, error() {} };
 let backendServer, frontendServer, temporary, origin;
 let mode, uploads, polls, documentRequests;
@@ -23,6 +24,8 @@ function job(status) {
   return {
     submission_id: id, status, status_url: statusURL,
     document_url: status === "complete" ? documentURL : null,
+    join_report_url: status === "complete" ? reportURL : null,
+    review_required: status === "complete" && mode === "review",
     error: status === "failed" ? "Document reconstruction failed. Check the photos and try again." : null
   };
 }
@@ -46,6 +49,9 @@ before(async () => {
     if (polls < 2) return res.status(409).json({ detail: "Document not available yet." });
     res.type("png").set("Content-Disposition", 'inline; filename="document.png"').send(imageBytes);
   });
+  backend.get(reportURL, (req, res) => res.type("html").send("<h1>Join report</h1>"));
+  backend.get(`${statusURL}/document.png`, (req, res) => res.type("png").send(imageBytes));
+  backend.get(`${statusURL}/join_report.json`, (req, res) => res.json({ joins: [] }));
   backendServer = backend.listen(0, "127.0.0.1");
   await once(backendServer, "listening");
 
@@ -82,6 +88,7 @@ function browser() {
   let submit;
   const button = { disabled: false };
   const messages = [];
+  const links = [];
   const nodes = {
     uploadForm: {
       addEventListener(name, listener) { if (name === "submit") submit = listener; },
@@ -93,7 +100,8 @@ function browser() {
     ] },
     uploadStatus: {
       set textContent(value) { messages.push(value); },
-      get textContent() { return messages.at(-1); }
+      get textContent() { return messages.at(-1); },
+      append(node) { links.push(node); }
     },
     originalImage: { style: {} }, originalMessage: { style: {} },
     editedMessage: { style: {} },
@@ -110,7 +118,7 @@ function browser() {
     }
   };
   vm.runInNewContext(browserScript, {
-    document: { getElementById: id => nodes[id] },
+    document: { getElementById: id => nodes[id], createElement: () => ({}) },
     FormData, AbortSignal, console: quietConsole,
     URL: { createObjectURL: () => "blob:original-image", revokeObjectURL() {} },
     fetch: (url, options) => {
@@ -119,7 +127,7 @@ function browser() {
     },
     setTimeout: callback => setTimeout(callback, 1)
   });
-  return { nodes, button, messages, submit: () => submit({ preventDefault() {} }) };
+  return { nodes, button, messages, links, submit: () => submit({ preventDefault() {} }) };
 }
 
 test("all photos reach one submission and the finished PNG appears in Edited Image", async () => {
@@ -142,6 +150,19 @@ test("all photos reach one submission and the finished PNG appears in Edited Ima
   assert.equal(page.nodes.uploadStatus.textContent, "Reconstruction complete!");
   assert.ok(page.messages.includes("Sorting strips and reconstructing your document..."));
   assert.equal(page.button.disabled, false);
+});
+
+test("a review warning links to the report and its page assets", async () => {
+  mode = "review";
+  const page = browser();
+  await page.submit();
+  assert.match(page.nodes.uploadStatus.textContent, /need review/);
+  assert.equal(page.links.length, 1);
+  assert.equal(page.links[0].href, reportURL);
+  assert.equal(page.links[0].textContent, "View join report");
+  assert.equal((await fetch(origin + reportURL)).status, 200);
+  assert.equal((await fetch(origin + `${statusURL}/document.png`)).status, 200);
+  assert.equal((await fetch(origin + `${statusURL}/join_report.json`)).status, 200);
 });
 
 test("a later failed job hides the old image and displays the backend error", async () => {

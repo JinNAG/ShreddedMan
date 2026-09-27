@@ -19,6 +19,24 @@ from sort_strips import sort_strips
 
 class PhotoSortingTests(unittest.TestCase):
     @unittest.skipUnless(os.environ.get("SHREDDEDMAN_PHOTO_REGRESSIONS") == "1", "Opt-in local photo regression")
+    def test_uneven_photo_heights_recover_the_checked_page_order(self):
+        source = Path(__file__).resolve().parents[1] / "img/69c263930fa84e2daa99720b9f3eb93a/normalized_strips"
+        if not source.is_dir() or not shutil.which("tesseract"):
+            self.skipTest("Local sample and Tesseract are required")
+        # Matched to the independently checked capture of the same physical
+        # strips using hundreds of SIFT correspondences per text-bearing piece.
+        expected = [24, 17, 9, 7, 25, 20, 4, 6, 14, 18, 1, 5, 3, 11,
+                    2, 15, 16, 21, 12, 10, 8, 27, 29, 31, 30, 26, 32, 34]
+        with tempfile.TemporaryDirectory() as directory:
+            report = sort_strips(source, Path(directory) / "final_document", ocr_mode="required")
+            actual = [int(entry["source"][5:-4]) for entry in report["order"]
+                      if entry["position"] is not None]
+            self.assertEqual([number for number in actual if number in expected], expected)
+            self.assertTrue(report["matching"]["vertical_spacing_preserved"])
+            self.assertTrue(report["review_required"])
+            self.assertGreater(report["verification"]["document_check"]["repair_candidates_checked"], 0)
+
+    @unittest.skipUnless(os.environ.get("SHREDDEDMAN_PHOTO_REGRESSIONS") == "1", "Opt-in local photo regression")
     def test_carpet_photo_order_and_complete_page_verification(self):
         source = Path(__file__).resolve().parents[1] / "img/351eb45f764d40c2b9c9682366f479ed/normalized_strips"
         if not source.is_dir() or not shutil.which("tesseract"):

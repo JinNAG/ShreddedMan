@@ -529,7 +529,17 @@ Server Script
           }
           editedImage.style.display = "block";
           editedMessage.style.display = "none";
-          status.textContent = "Reconstruction complete!";
+          status.textContent = submission.review_required
+            ? "Reconstruction ready. Some strip joins need review. "
+            : "Reconstruction complete!";
+          if (submission.review_required && submission.join_report_url) {
+            const reportLink = document.createElement("a");
+            reportLink.href = submission.join_report_url;
+            reportLink.textContent = "View join report";
+            reportLink.target = "_blank";
+            reportLink.rel = "noopener";
+            status.append(reportLink);
+          }
 
 
         } catch (error) {
