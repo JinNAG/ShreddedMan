@@ -138,18 +138,25 @@ result = process_submission(submission.directory)
 
 Separate submissions can be processed independently. A single submission
 should have one processing job at a time. The Python pipeline is synchronous;
-the HTTP API below schedules it in a background worker. The existing frontend
-is unchanged and is not connected to the API yet.
+the HTTP API below schedules it in a background worker. The frontend sends all
+selected photos as one submission and displays the result in the Edited Image box.
 
 ## Backend API
 
 From the repository root, with your virtual environment activated:
 
 ```sh
-python -m uvicorn api:app --app-dir src --host 127.0.0.1 --port 8000
+python -m uvicorn api:app --app-dir backend/src --host 127.0.0.1 --port 8000
 ```
 
 Open http://127.0.0.1:8000/docs to try uploads and view the full API reference.
+
+Run `npm start` in another terminal at the repository root and open
+http://localhost:3000. The form accepts up to 20 PNG/JPEG photos of one document,
+up to 20 MiB per photo and 100 MiB total. It polls reconstruction progress and
+loads the completed PNG into the existing Edited Image box. The Node server
+uses `http://127.0.0.1:8000` by default; set `BACKEND_URL` for a different Python
+API origin. Both servers must be running. Restart Node after editing `server.js`.
 
 | Method | Endpoint | Result |
 | --- | --- | --- |
@@ -163,7 +170,7 @@ until `complete` or `failed`, then use `document_url` or display `error`.
 
 Files are stored under `img/`; set `SHREDDEDMAN_IMG_ROOT` to change the location.
 This local-development API uses one background worker and an in-memory queue;
-unfinished jobs must be resubmitted after a forced stop. The frontend is not connected yet.
+unfinished jobs must be resubmitted after a forced stop.
 
 ## Reconstruction and tests
 
@@ -197,6 +204,9 @@ python -m unittest discover -s backend/tests -v
 ```
 
 API tests use temporary storage and leave sample submissions unchanged.
+
+Run `node --test tests/frontend-api.test.js` for upload forwarding, progress,
+completed-image display, and error-handling checks against an isolated HTTP backend.
 
 The existing sample images have been migrated into these submissions:
 
