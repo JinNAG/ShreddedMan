@@ -98,19 +98,15 @@ function browser() {
       new File([imageBytes], "photo.png", { type: "image/png" }),
       new File(["second photo"], "photo.jpeg", { type: "image/jpeg" })
     ] },
-    uploadStatus: {
-      set textContent(value) { messages.push(value); },
-      get textContent() { return messages.at(-1); },
-      append(node) { links.push(node); }
-    },
     originalImages: {
+      style: {}, children: [],
+      replaceChildren(...images) { this.children = images; }
+    },
+    originalMessage: { style: {} },
+    editedMessage: {
       style: {},
-      replaceChildren(...children) { this.children = children; }
-    }, originalMessage: { style: {} },
-    editedMessage: { style: {} },
-    downloadImage: {
-      hidden: true,
-      removeAttribute(name) { delete this[name]; }
+      set textContent(value) { messages.push(value); this.value = value; },
+      get textContent() { return this.value; }
     },
     editedImage: {
       style: { display: "none" },
@@ -122,10 +118,20 @@ function browser() {
         assert.equal(response.headers.get("content-type"), "image/png");
         assert.deepEqual(Buffer.from(await response.arrayBuffer()), imageBytes);
       }
+    },
+    downloadImage: {
+      hidden: true,
+      removeAttribute(name) { delete this[name]; }
     }
   };
   vm.runInNewContext(browserScript, {
-    document: { getElementById: id => nodes[id], createElement: () => ({}) },
+    document: {
+      getElementById: id => nodes[id],
+      createElement: tag => {
+        assert.equal(tag, "img");
+        return {};
+      }
+    },
     FormData, AbortSignal, console: quietConsole,
     URL: { createObjectURL: () => "blob:original-image", revokeObjectURL() {} },
     fetch: (url, options) => {
@@ -154,10 +160,10 @@ test("all photos reach one submission and the finished PNG appears in Edited Ima
   assert.equal(page.nodes.editedImage.style.display, "block");
   assert.equal(page.nodes.editedMessage.style.display, "none");
   assert.equal(page.nodes.originalImages.style.display, "grid");
-  assert.equal(page.nodes.originalImages.children.length, 2);
+  assert.deepEqual(page.nodes.originalImages.children.map(image => image.alt),
+    ["Uploaded photo 1", "Uploaded photo 2"]);
   assert.equal(page.nodes.downloadImage.href, documentURL);
   assert.equal(page.nodes.downloadImage.hidden, false);
-  assert.equal(page.nodes.uploadStatus.textContent, "Reconstruction complete!");
   assert.ok(page.messages.includes("Sorting strips and reconstructing your document..."));
   assert.equal(page.button.disabled, false);
 });
