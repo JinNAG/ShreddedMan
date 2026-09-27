@@ -49,8 +49,16 @@
     .banner-ad-placeholder {
       width: 180px;
       height: 60px;
-      background: #d7c7a7;
-      border: 2px solid #7a6449;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .banner-ad-placeholder img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
     }
 
     /* ---- Nav bar ---- */
@@ -355,7 +363,9 @@
     <div class="logo-placeholder"><img alt="logo image" src="webImg/Better_Call_Saul_logo.png" style="width:100%;">
     </div>
     <div class="tagline">Experience the Power of the Goodman Recovery!</div>
-    <div class="banner-ad-placeholder"></div>
+    <div class="banner-ad-placeholder">
+      <img alt="HackUMBC logo" src="webImg/hackumbc2026logo.png">
+    </div>
   </div>
 
   <div class="nav-bar">
