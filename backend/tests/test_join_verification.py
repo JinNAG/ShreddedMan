@@ -12,7 +12,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from join_report import confidence_for_join
-from join_verification import JoinVerifier, measure_seam, refine_orders, verify_document_orders
+from join_verification import (JoinVerifier, english_fragments, measure_seam, refine_orders,
+                               text_evidence, verify_document_orders)
 from strip_ocr import TesseractOCR
 from sort_strips import rank_orders
 
@@ -176,6 +177,36 @@ class JoinVerificationTests(unittest.TestCase):
         evidence = measure_seam(ink, 40, words)
         self.assertEqual(evidence["recognized_tokens"], 0)
         self.assertEqual(evidence["ocr_score"], 0)
+
+    def test_confident_ocr_of_a_wrong_join_is_not_plausible_english(self):
+        # Tesseract reads both joins confidently; only the letters differ.
+        ink = np.zeros((100, 80), np.float32)
+        ink[15:25, 30:50] = 1
+        ink[65:75, 30:50] = 1
+
+        def words(first, second):
+            return [{"text": first, "confidence": 0.9, "box": [25, 10, 30, 20]},
+                    {"text": second, "confidence": 0.9, "box": [25, 60, 30, 20]}]
+
+        fragments = english_fragments()
+        correct = measure_seam(ink, 40, words("ledge", "versity"), fragments)
+        wrong = measure_seam(ink, 40, words("ledgne", "versiMary"), fragments)
+        self.assertEqual(correct["ocr_score"], wrong["ocr_score"])
+        self.assertGreater(correct["lexical_score"], 0.8)
+        self.assertLess(wrong["lexical_score"], 0.4)
+        self.assertGreater(text_evidence(correct), text_evidence(wrong))
+
+    def test_ink_evidence_is_unchanged_without_an_english_word_list(self):
+        ink = np.zeros((100, 80), np.float32)
+        ink[15:25, 30:50] = 1
+        evidence = measure_seam(ink, 40, [{"text": "ledgne", "confidence": 0.9, "box": [25, 10, 30, 20]}])
+        self.assertIsNone(evidence["lexical_score"])
+        self.assertEqual(text_evidence(evidence), evidence["ocr_score"])
+        images = [np.full((100, 20, 4), 255, np.uint8) for _ in range(2)]
+        matches = SimpleNamespace(warps=np.broadcast_to(np.arange(100, dtype=np.float32), (2, 2, 100)))
+        german = SimpleNamespace(enabled=True, language="deu")
+        self.assertIsNone(JoinVerifier(images, matches, 100, german).fragments)
+        self.assertIsNotNone(JoinVerifier(images, matches, 100, SimpleNamespace(enabled=True, language="eng")).fragments)
 
     def test_blank_join_never_gets_high_confidence(self):
         evidence = measure_seam(np.zeros((100, 80), np.float32), 40, [])

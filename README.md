@@ -206,9 +206,13 @@ vertical offset when one adjacent match locks onto the wrong text line.
 With OCR enabled, each pair is also reconstructed and analyzed with dictionary
 correction disabled, allowing incomplete words and names. OCR rewards readable
 ink near the cut and penalizes unrecognized ink, rather than trusting only the
-characters that happened to be recognized. The pair score combines visual
-matching (50%) and OCR ink evidence (50%). Stroke continuity is shown in the
-report as supporting evidence.
+characters that happened to be recognized. Tesseract also reads a wrong join
+confidently, so for English OCR every five-letter sequence in the words crossing
+the cut is checked against the bundled public-domain Webster word list: letters
+across a correct cut continue a real word. The pair score combines visual
+matching (25%), OCR ink evidence (25%), and this English plausibility (50%);
+other OCR languages use visual matching (50%) and OCR ink evidence (50%).
+Stroke continuity is shown in the report as supporting evidence.
 
 The first ordering maximizes the sum of adjacent-pair scores. Exhaustive search
 handles up to eight text strips; larger samples use an integer optimizer. The
@@ -218,10 +222,9 @@ pair score, including non-adjacent changes. A change must improve the complete
 objective (25% mean pair score, 75% mean three-strip OCR evidence), including
 joins it might damage elsewhere. This bounded context search does not guarantee
 the globally best order or continue indefinitely until text looks correct.
-The full-page check also measures how many complete English OCR words appear in
-the bundled public-domain Webster word list. It uses that evidence to test
-block moves across weak joins. These checks rank candidates; they never alter
-the photographed text. Non-English OCR keeps the ink-only page check.
+The three-strip and full-page checks use the same OCR evidence (ink plus English
+plausibility) at every join. These checks rank candidates; they never alter
+the photographed text. Non-English OCR keeps the ink-only checks.
 
 Strips must be upright and belong to one page. Similar letter fragments, damaged
 cuts, language mismatches, and missing strips can still produce incorrect

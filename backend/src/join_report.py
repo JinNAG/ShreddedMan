@@ -73,6 +73,7 @@ def build_join_report(order, ranked, scores, verifier, labels, refinement, docum
             "scores": {"combined_pair": float(scores[a, b]), "visual": float(verifier.matches.scores[a, b]),
                        "stroke_continuity": evidence["stroke_score"],
                        "ocr_ink_evidence": evidence["ocr_score"] if verifier.ocr.enabled else None,
+                       "english_plausibility": evidence.get("lexical_score"),
                        "mean_ocr_recognition": evidence["ocr_confidence"] if verifier.ocr.enabled else None},
             "text_lines": evidence["text_lines"], "recognized_lines": evidence["recognized_lines"],
             "sampled_text_lines": analysis["sampled_text_lines"],
