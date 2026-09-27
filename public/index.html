@@ -13,13 +13,13 @@
 
     body {
       font-family: Verdana, Arial, sans-serif;
-      background: #d6f0fb;
-      color: #1a2a6c;
+      background: #efe6d6;
+      color: #1f2d2d;
     }
 
     /* ---- Top banner ---- */
     .top-banner {
-      background: #ffffff;
+      background: #f7f1e7;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -40,7 +40,7 @@
     }
 
     .tagline {
-      color: #f5921b;
+      color: #c66d1a;
       font-weight: bold;
       font-style: italic;
       font-size: 26px;
@@ -49,20 +49,28 @@
     .banner-ad-placeholder {
       width: 180px;
       height: 60px;
-      background: #a9c6e8;
-      border: 2px dashed #6f8fb5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .banner-ad-placeholder img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
     }
 
     /* ---- Nav bar ---- */
     .nav-bar {
-      background: #0606dad1;
+      background: #183a4e;
       padding: 12px 30px;
       font-weight: bold;
       font-size: 14px;
     }
 
     .nav-bar a {
-      color: #000000d1;
+      color: #f3ead9;
       text-decoration: none;
       margin-right: 8px;
     }
@@ -72,7 +80,7 @@
     }
 
     .nav-bar .highlight {
-      color: #cc0000;
+      color: #f4a23e;
     }
 
     /* ---- Layout ---- */
@@ -82,10 +90,28 @@
 
     /* ---- Left Sidebar ---- */
     .sidebar {
-      background: #bfe0f7;
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+      background: #d7cfbf;
       width: 220px;
       padding: 25px 20px;
       min-height: 700px;
+    }
+
+    .sidebar-art {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      z-index: -1;
+      width: 950px;
+      height: 260px;
+      max-width: none;
+      object-fit: cover;
+      object-position: center;
+      transform: translate(-50%, -50%) rotate(90deg);
+      opacity: 0.25;
+      pointer-events: none;
     }
 
     .sidebar ul {
@@ -98,7 +124,7 @@
     }
 
     .sidebar a {
-      color: #1a2a6c;
+      color: #233d4d;
       text-decoration: underline;
       font-weight: bold;
       font-size: 14px;
@@ -107,14 +133,14 @@
     .mascot-placeholder {
       width: 140px;
       height: 160px;
-      background: #cfd8e3;
-      border: 2px dashed #8896a6;
+      background: #e8dfd1;
+      border: 2px solid #6f6456;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 12px;
       color: #556;
-      margin: 20px 0;
+      margin: 20px auto;
     }
 
     .availability-box {
@@ -157,12 +183,13 @@
     }
 
     .contest-box {
-      background: #dceefb;
-      border: 1px solid #8896a6;
+      background: #e8dac0;
+      border: 1px solid #7a6654;
       padding: 12px;
       text-align: center;
       font-size: 13px;
       font-weight: bold;
+      color: #2f3d3d;
     }
 
     /* ---- Main content ---- */
@@ -172,7 +199,7 @@
     }
 
     .content h1 {
-      color: #f5921b;
+      color: #b96b20;
       font-style: italic;
       font-size: 32px;
       margin-bottom: 4px;
@@ -198,28 +225,68 @@
     }
 
 
-    .screenshot-placeholder {
-      width: 420px;
-      height: 500px;
-      background: #cfd8e3;
-      border: 2px dashed #8896a6;
-      font-size: 13px;
-      color: #556;
-      flex-shrink: 0;
-
+    .upload-panel {
+      margin-top: 18px;
+      background: #f3ead7;
+      border: 2px solid #6d6157;
+      padding: 12px 12px 10px;
       display: flex;
       flex-direction: column;
-      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      max-width: 440px;
+    }
+
+    .upload-panel form {
+      display: flex;
+      flex-direction: row;
       align-items: center;
-      gap: 16px;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
     }
 
-
-    .screenshot-placeholder button {
-      width: 60%;
-      padding: 10px;
+    .upload-panel input[type="file"] {
+      width: 100%;
+      max-width: 360px;
+      background: #fffdf8;
+      border: 1px solid #7a6558;
+      padding: 8px;
+      margin: 0 auto;
     }
 
+    .upload-panel .submit-group {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .upload-panel button {
+      padding: 8px 14px;
+      background: #c76f2a;
+      color: #fffaf0;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .upload-gif {
+      width: 52px;
+      height: 52px;
+      object-fit: contain;
+      display: block;
+    }
+
+    #uploadStatus {
+      min-height: 1.2em;
+      text-align: center;
+      font-size: 13px;
+      color: #1a2a6c;
+    }
 
     .feature-links a {
       display: block;
@@ -286,15 +353,15 @@
     .result-box {
       width: 100%;
       height: 400px;
-      background: #cfd8e3;
-      border: 2px dashed #8896a6;
+      background: #e6dfd3;
+      border: 2px solid #6f6457;
 
       display: flex;
       justify-content: center;
       align-items: center;
 
       padding: 20px;
-      color: #556;
+      color: #4d443e;
       font-size: 13px;
       text-align: center;
     }
@@ -314,7 +381,9 @@
     <div class="logo-placeholder"><img alt="logo image" src="webImg/Better_Call_Saul_logo.png" style="width:100%;">
     </div>
     <div class="tagline">Experience the Power of the Goodman Recovery!</div>
-    <div class="banner-ad-placeholder"></div>
+    <div class="banner-ad-placeholder">
+      <img alt="HackUMBC logo" src="webImg/hackumbc2026logo.png">
+    </div>
   </div>
 
   <div class="nav-bar">
@@ -327,6 +396,7 @@
   <div class="page">
 
     <div class="sidebar">
+      <img class="sidebar-art" src="webImg/pillar2.png" alt="" aria-hidden="true">
       <ul>
         <li><a href="#">Criminal Defence</a></li>
         <li><a href="#">Public Defense</a></li>
@@ -334,7 +404,9 @@
 
       </ul>
 
-      <div class="mascot-placeholder"></div>
+      <div class="mascot-placeholder">
+        <img alt="Saul Goodman" src="webImg/saul_goodman_face.png" style="width:100%; height:100%; object-fit:cover; display:block;">
+      </div>
 
       <div class="availability-box">
         Am I in your area?
@@ -359,18 +431,6 @@
       <p class="subhead">Alburquerque's preeminent legal service provider.</p>
 
       <div class="feature-row">
-        <div class="screenshot-placeholder">
-          <p>Drag & drop or select your images</p>
-
-
-          <form id="uploadForm" action="/upload" method="POST" enctype="multipart/form-data">
-            <input type="file" id="Upload" name="ImageUpload" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple />
-            <button type="submit">Submit</button>
-          </form>
-          <p id="uploadStatus"></p>
-        </div>
-        <hr class="content-line">
-
         <div class="results">
           <div class="result-section">
             <h2>Original Image</h2>
@@ -381,6 +441,17 @@
               </p>
 
               <img id="originalImage" alt="Original uploaded image">
+            </div>
+
+            <div class="upload-panel">
+              <form id="uploadForm" action="/upload" method="POST" enctype="multipart/form-data">
+                <input type="file" id="Upload" name="ImageUpload" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple />
+                <div class="submit-group">
+                  <button type="submit">Submit</button>
+                  <img class="upload-gif" src="webImg/unshred.gif" alt="Unshred animation" />
+                </div>
+              </form>
+              <p id="uploadStatus"></p>
             </div>
           </div>
 
