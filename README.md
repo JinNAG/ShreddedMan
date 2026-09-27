@@ -69,7 +69,9 @@ and processing status. `order.json` contains estimated positions, source
 mappings, all pair scores, alternative orders, and ambiguous joins. Stored
 paths are relative to the submission so it can be moved as a unit. Blank/low-ink
 strips stay in the crop and normalized folders, with unresolved positions in the
-report; they are excluded from the final image for now.
+report; they are excluded from the final image for now. On text-rich pages, OCR
+also leaves near-blank strips unresolved unless one neighboring join has
+clearly stronger evidence than its alternatives.
 
 Rerun a submission after adding or removing source photos:
 
@@ -95,6 +97,9 @@ competing neighbors, and image snippets of weak text regions. The matching
 `join_report.json` includes all recognized fragments and per-line checks for
 application use. Confidence is a heuristic support score, **not a probability
 of correctness**; broken text may remain even at a high score.
+The full-page OCR check can move groups of strips across weak joins before
+choosing the most readable reconstruction it found. Small remaining row shifts
+are refined from ink crossing the selected joins.
 The API also returns `review_required` and `join_report_url` for a completed
 reconstruction. The website links to the join report when review is suggested.
 

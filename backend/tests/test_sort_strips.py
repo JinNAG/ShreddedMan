@@ -9,11 +9,24 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sort_strips import prepare_matching_images, rank_orders, sort_strips
-from strip_matching import _affine_matches, ink_profiles, match_profiles, stabilize_row_maps
+from sort_strips import prepare_matching_images, rank_orders, sort_strips, supported_text_positions
+from strip_matching import (_affine_matches, ink_profiles, match_profiles,
+                            refine_row_maps_from_ink, stabilize_row_maps)
 
 
 class StripSortingTests(unittest.TestCase):
+    def test_sparse_edge_needs_specific_support_while_blank_pieces_stay_unresolved(self):
+        fractions = [0.1] * 12 + [0.0006, 0.02, 0.005]
+        scores = np.full((15, 15), 0.1)
+        scores[11, 12] = 0.45
+        scores[10, 12] = 0.2
+        scores[11, 13] = 0.22
+        scores[10, 13] = 0.21
+        self.assertEqual(supported_text_positions(fractions, list(range(15)), scores, True),
+                         list(range(13)))
+        self.assertEqual(supported_text_positions(fractions, list(range(15)), scores, False),
+                         list(range(15)))
+
     def test_nearby_reciprocal_matches_correct_an_outlier_row_offset(self):
         rows = np.arange(200, dtype=np.float32)
         offsets = [0, 10, 20, 30, 40]
@@ -41,6 +54,23 @@ class StripSortingTests(unittest.TestCase):
         adjusted = stabilize_row_maps(tuple(range(6)), direct, warps, scores)
         self.assertEqual([round(mapping[100] - 100) for mapping in adjusted[:5]], offsets[:5])
         self.assertEqual(round(adjusted[5][100] - 100), 260)
+
+    def test_seam_ink_refines_a_small_row_jump_without_moving_aligned_strips(self):
+        height = 1500
+        rows = np.arange(height, dtype=np.float32)
+        rng = np.random.default_rng(57)
+        centers = np.arange(60, height - 60, 50) + rng.integers(-9, 10, 28)
+        signal = np.zeros(height, np.float32)
+        for center in centers:
+            signal += np.exp(-0.5 * ((rows - center) / 3) ** 2)
+        inks = [np.tile(np.clip(signal, 0, 1)[:, None], (1, 24)) for _ in range(5)]
+        maps = [rows.copy() for _ in inks]
+        maps[2] += 7
+        adjusted = refine_row_maps_from_ink(tuple(range(5)), maps, inks)
+        self.assertAlmostEqual(adjusted[0][750] - maps[0][750], 0, delta=0.1)
+        offsets = [mapping[750] - rows[750] for mapping in adjusted]
+        self.assertLess(max(abs(b - a) for a, b in zip(offsets, offsets[1:])), 3)
+        self.assertLess(abs(offsets[2]), 3)
 
     def test_large_crop_height_difference_preserves_text_row_spacing(self):
         short = np.full((100, 20, 4), 255, np.uint8)

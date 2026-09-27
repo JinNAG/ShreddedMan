@@ -9,7 +9,7 @@ import threading
 import cv2
 import numpy as np
 
-from strip_matching import stabilize_row_maps, strip_ink
+from strip_matching import refine_row_maps_from_ink, stabilize_row_maps, strip_ink
 from strip_ocr import DEFAULT_OCR_WORKERS
 
 
@@ -121,6 +121,7 @@ class JoinVerifier:
         if full_page:
             if hasattr(self.matches, "scores"):
                 maps = stabilize_row_maps(order, maps, self.warps, self.matches.scores)
+                maps = refine_row_maps_from_ink(order, maps, self.inks)
             def extend(points, coordinates, values):
                 result = np.interp(points, coordinates, values)
                 for endpoint, neighbor, outside in ((0, 1, points < coordinates[0]),
@@ -361,7 +362,7 @@ def verify_document_orders(ranked, pair_ranked, verifier, pair_scores=None):
     # then let complete-page OCR judge the small set of resulting orders.
     repair_rounds = repair_candidates_checked = 0
     if pair_scores is not None:
-        for _ in range(6):
+        for _ in range(8):
             selected = min(range(len(orders)), key=lambda i: (-readings[i]["score"],
                                                               orders[i] != baseline, orders[i]))
             current, reading = orders[selected], readings[selected]

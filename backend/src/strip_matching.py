@@ -240,6 +240,73 @@ def stabilize_row_maps(order, maps, warps, scores):
     return adjusted
 
 
+def refine_row_maps_from_ink(order, maps, inks):
+    """Remove small residual row jumps using ink at the selected seams.
+
+    ``inks`` are background-free, equally tall 2-D arrays in strip-index
+    order. The caller should trim cut-edge shadows before passing them. Each
+    seam contributes only when several text-rich windows agree on a small
+    shift and correlation clearly improves. A weak identity prior prevents
+    the corrections from accumulating across the page.
+    """
+    count = len(order)
+    if count < 2:
+        return maps
+    height = len(maps[0])
+    if len(maps) != count or any(ink.ndim != 2 or ink.shape[0] != height or ink.shape[1] < 4
+                                 for ink in inks) or len(inks) <= max(order):
+        raise ValueError("Row maps and ink images must have matching heights and strip indices.")
+    rows = np.arange(height, dtype=np.float32)
+    window = max(80, min(250, round(height / 8)))
+    margin = min(100, round(height * 0.05))
+    radius = min(12, max(6, round(height * 0.005)))
+    edge_width = 6
+    deltas, weights = [], []
+    for position, (left, right) in enumerate(zip(order, order[1:])):
+        left_trace = inks[left][:, -edge_width:].mean(axis=1)
+        right_trace = inks[right][:, :edge_width].mean(axis=1)
+        a = np.interp(maps[position], rows, left_trace, left=0, right=0)
+        b = np.interp(maps[position + 1], rows, right_trace, left=0, right=0)
+        shifts = []
+        for start in range(margin, height - window - margin, window):
+            segment = a[start:start + window]
+            if np.count_nonzero(segment > 0.12) < 10:
+                continue
+            scores = []
+            for shift in range(-radius, radius + 1):
+                other = np.interp(np.arange(start, start + window) + shift, rows, b,
+                                  left=0, right=0)
+                scores.append(2 * np.dot(segment, other) /
+                              (np.dot(segment, segment) + np.dot(other, other) + 1e-9))
+            best = int(np.argmax(scores))
+            if scores[best] > 0.35 and scores[best] - scores[radius] > 0.025:
+                shifts.append(best - radius)
+        if len(shifts) >= 3:
+            delta = float(np.median(shifts))
+            spread = float(np.median(np.abs(np.asarray(shifts) - delta)))
+            weight = min(1.0, len(shifts) / 6) if spread <= 4 and abs(delta) <= 10 else 0.0
+        else:
+            delta, weight = 0.0, 0.0
+        deltas.append(delta)
+        weights.append(weight)
+    if not any(weights):
+        return maps
+
+    # c[0] is anchored at zero. Each row observes c[right] - c[left]; the
+    # remaining rows weakly prefer zero correction for each strip.
+    equations = np.zeros((2 * (count - 1), count - 1))
+    targets = np.zeros(2 * (count - 1))
+    for index, (delta, weight) in enumerate(zip(deltas, weights)):
+        if index:
+            equations[index, index - 1] = -weight
+        equations[index, index] = weight
+        targets[index] = weight * delta
+        equations[count - 1 + index, index] = 0.25
+    corrections = np.r_[0, np.clip(np.linalg.lstsq(equations, targets, rcond=None)[0],
+                                   -radius, radius)]
+    return [mapping + corrections[index] for index, mapping in enumerate(maps)]
+
+
 def match_profiles(
     profiles: list[np.ndarray], max_shift: int | None = None, scale_range: float = 0.04
 ) -> PairMatches:
