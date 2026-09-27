@@ -225,13 +225,7 @@ API tests use temporary storage and leave sample submissions unchanged.
 Run `node --test tests/frontend-api.test.js` for upload forwarding, progress,
 completed-image display, and error-handling checks against an isolated HTTP backend.
 
-The existing sample images have been migrated into these submissions:
-
-| Sample | Submission folder |
-| --- | --- |
-| photo1 | [0ebcf760ad274996badf236a20836806](backend/img/0ebcf760ad274996badf236a20836806) |
-| photo2 | [5f79ef7265914cc4bac385a2a5c68b60](backend/img/5f79ef7265914cc4bac385a2a5c68b60) |
-| photo3_1 + photo3_2 | [b5e8deb5e6d64ab4b25f279e96d401e7](backend/img/b5e8deb5e6d64ab4b25f279e96d401e7) |
-
-Each migrated sample also has `previous_results.zip` at its root, preserving
-earlier comparison images and reports that are not part of the current output.
+The server writes each processed submission into a unique folder under
+`backend/img/`. These generated folders and temporary files under `uploads/`
+are ignored by Git. Curated photos in `backend/img/error_images/` and
+`backend/img/good_images/` can still be committed as regression fixtures.

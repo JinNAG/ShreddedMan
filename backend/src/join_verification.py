@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
+import gzip
 from pathlib import Path
 import re
 import threading
@@ -16,9 +17,10 @@ from strip_ocr import DEFAULT_OCR_WORKERS
 @lru_cache(maxsize=1)
 def _english_words() -> frozenset[str]:
     """A local public-domain word list for reviewing complete English words."""
-    path = Path(__file__).with_name("english_words.txt")
-    return frozenset(line for line in path.read_text(encoding="utf-8").splitlines()
-                     if line and not line.startswith("#"))
+    path = Path(__file__).with_name("english_words.txt.gz")
+    with gzip.open(path, "rt", encoding="utf-8") as source:
+        return frozenset(line.strip() for line in source
+                         if line.strip() and not line.startswith("#"))
 
 
 def _lexical_ratio(words: list[dict]) -> tuple[float | None, int]:
