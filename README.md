@@ -1,5 +1,19 @@
 # ShreddedMan
 
+## Webpage requirements
+
+To run the webpage and its image-processing workflow, you need:
+
+- **Node.js 18 or newer** and npm for the Express web server.
+- **Python 3.10 or newer** and pip for the FastAPI processing service.
+- A modern browser with JavaScript enabled.
+- Both the Node.js server and Python API running; the webpage is served at
+  `http://localhost:3000` and the API defaults to `http://127.0.0.1:8000`.
+
+Install the Node.js dependencies from the repository root with `npm install`.
+Install the Python dependencies using the virtual-environment steps below.
+Tesseract OCR is optional; without it, the app uses visual sorting without OCR.
+
 The Python backend lives in `backend/`: code in `backend/src`, tests in
 `backend/tests`, and submissions in `backend/img`. The commands below run from
 the repository root.
