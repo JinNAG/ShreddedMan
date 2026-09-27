@@ -1,286 +1,318 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<title>ShreddedMan</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: Verdana, Arial, sans-serif;
-    background: #d6f0fb;
-    color: #1a2a6c;
-  }
+  <meta charset="UTF-8">
+  <title>ShreddedMan</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-  /* ---- Top banner ---- */
-  .top-banner {
-    background: #ffffff;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 20px 30px;
-  }
-  .logo-placeholder {
-    width: 260px;
-    height: 60px;
-    /*background: #cfd8e3;*/
-    /*border: 2px dashed #8896a6;*/
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    /*color: #556;*/
-    font-size: 12px;
-    font-weight: bold;
-  }
-  .tagline {
-    color: #f5921b;
-    font-weight: bold;
-    font-style: italic;
-    font-size: 26px;
-  }
-  .banner-ad-placeholder {
-    width: 180px;
-    height: 60px;
-    background: #a9c6e8;
-    border: 2px dashed #6f8fb5;
-  }
+    body {
+      font-family: Verdana, Arial, sans-serif;
+      background: #d6f0fb;
+      color: #1a2a6c;
+    }
 
-  /* ---- Nav bar ---- */
-  .nav-bar {
-    background: #0606dad1;
-    padding: 12px 30px;
-    font-weight: bold;
-    font-size: 14px;
-  }
-  .nav-bar a {
-    color: #000000d1;
-    text-decoration: none;
-    margin-right: 8px;
-  }
-  .nav-bar a:hover { text-decoration: underline; }
-  .nav-bar .highlight { color: #cc0000; }
+    /* ---- Top banner ---- */
+    .top-banner {
+      background: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 30px;
+    }
 
-  /* ---- Layout ---- */
-  .page {
-    display: flex;
-  }
+    .logo-placeholder {
+      width: 260px;
+      height: 60px;
+      /*background: #cfd8e3;*/
+      /*border: 2px dashed #8896a6;*/
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /*color: #556;*/
+      font-size: 12px;
+      font-weight: bold;
+    }
 
-  /* ---- Left Sidebar ---- */
-  .sidebar {
-    background: #bfe0f7;
-    width: 220px;
-    padding: 25px 20px;
-    min-height: 700px;
-  }
-  .sidebar ul {
-    list-style: none;
-    margin-bottom: 30px;
-  }
-  .sidebar li { margin-bottom: 10px; }
-  .sidebar a {
-    color: #1a2a6c;
-    text-decoration: underline;
-    font-weight: bold;
-    font-size: 14px;
-  }
+    .tagline {
+      color: #f5921b;
+      font-weight: bold;
+      font-style: italic;
+      font-size: 26px;
+    }
 
-  .mascot-placeholder {
-    width: 140px;
-    height: 160px;
-    background: #cfd8e3;
-    border: 2px dashed #8896a6;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    color: #556;
-    margin: 20px 0;
-  }
+    .banner-ad-placeholder {
+      width: 180px;
+      height: 60px;
+      background: #a9c6e8;
+      border: 2px dashed #6f8fb5;
+    }
 
-  .availability-box {
-    font-size: 13px;
-    margin-bottom: 8px;
-  }
-.zip-form {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-}
+    /* ---- Nav bar ---- */
+    .nav-bar {
+      background: #0606dad1;
+      padding: 12px 30px;
+      font-weight: bold;
+      font-size: 14px;
+    }
 
-.zip-form input[type="text"] {
-  flex: 1;
-  min-width: 0;
-  padding: 6px;
-  border: 1px solid #8896a6;
-}
+    .nav-bar a {
+      color: #000000d1;
+      text-decoration: none;
+      margin-right: 8px;
+    }
 
-.zip-form button {
-  flex-shrink: 0;
-  background: #f5921b;
-  border: none;
-  border-radius: 50%;
-  width: 34px;
-  height: 34px;
-  color: white;
-  font-weight: bold;
-  margin-left: 6px;
-  cursor: pointer;
-}
+    .nav-bar a:hover {
+      text-decoration: underline;
+    }
 
-  .signup-btn {
-    color: #cc0000;
-    font-weight: bold;
-    font-style: italic;
-    font-size: 20px;
-    margin-bottom: 10px;
-  }
-  .contest-box {
-    background: #dceefb;
-    border: 1px solid #8896a6;
-    padding: 12px;
-    text-align: center;
-    font-size: 13px;
-    font-weight: bold;
-  }
-  /* ---- Main content ---- */
-  .content {
-    flex: 1;
-    padding: 30px 40px;
-  }
-  .content h1 {
-    color: #f5921b;
-    font-style: italic;
-    font-size: 32px;
-    margin-bottom: 4px;
-  }
-  .content .subhead {
-    font-size: 14px;
-    margin-bottom: 30px;
-  }
+    .nav-bar .highlight {
+      color: #cc0000;
+    }
 
-  .feature-row {
-    display: grid;
-    gap: 40px;
-    place-items: center;
-    margin-bottom: 40px;
-  }
+    /* ---- Layout ---- */
+    .page {
+      display: flex;
+    }
 
-.content-line {
-width: 100%;
-border: none;
-border-top: 1px solid #1a2a6c;
-margin: 40px 0;
-}
+    /* ---- Left Sidebar ---- */
+    .sidebar {
+      background: #bfe0f7;
+      width: 220px;
+      padding: 25px 20px;
+      min-height: 700px;
+    }
+
+    .sidebar ul {
+      list-style: none;
+      margin-bottom: 30px;
+    }
+
+    .sidebar li {
+      margin-bottom: 10px;
+    }
+
+    .sidebar a {
+      color: #1a2a6c;
+      text-decoration: underline;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .mascot-placeholder {
+      width: 140px;
+      height: 160px;
+      background: #cfd8e3;
+      border: 2px dashed #8896a6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: #556;
+      margin: 20px 0;
+    }
+
+    .availability-box {
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .zip-form {
+      display: flex;
+      align-items: center;
+      flex-wrap: nowrap;
+    }
+
+    .zip-form input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      padding: 6px;
+      border: 1px solid #8896a6;
+    }
+
+    .zip-form button {
+      flex-shrink: 0;
+      background: #f5921b;
+      border: none;
+      border-radius: 50%;
+      width: 34px;
+      height: 34px;
+      color: white;
+      font-weight: bold;
+      margin-left: 6px;
+      cursor: pointer;
+    }
+
+    .signup-btn {
+      color: #cc0000;
+      font-weight: bold;
+      font-style: italic;
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
+
+    .contest-box {
+      background: #dceefb;
+      border: 1px solid #8896a6;
+      padding: 12px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: bold;
+    }
+
+    /* ---- Main content ---- */
+    .content {
+      flex: 1;
+      padding: 30px 40px;
+    }
+
+    .content h1 {
+      color: #f5921b;
+      font-style: italic;
+      font-size: 32px;
+      margin-bottom: 4px;
+    }
+
+    .content .subhead {
+      font-size: 14px;
+      margin-bottom: 30px;
+    }
+
+    .feature-row {
+      display: grid;
+      gap: 40px;
+      place-items: center;
+      margin-bottom: 40px;
+    }
+
+    .content-line {
+      width: 100%;
+      border: none;
+      border-top: 1px solid #1a2a6c;
+      margin: 40px 0;
+    }
 
 
- .screenshot-placeholder {
-  width: 420px;
-  height: 500px;
-  background: #cfd8e3;
-  border: 2px dashed #8896a6;
-  font-size: 13px;
-  color: #556;
-  flex-shrink: 0;
+    .screenshot-placeholder {
+      width: 420px;
+      height: 500px;
+      background: #cfd8e3;
+      border: 2px dashed #8896a6;
+      font-size: 13px;
+      color: #556;
+      flex-shrink: 0;
 
-  display: flex;
-  flex-direction: column; 
-  justify-content: center; 
-  align-items: center;     
-  gap: 16px;               
-}
-
-
-.screenshot-placeholder button {
-  width: 60%; 
-  padding: 10px;
-}
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+    }
 
 
-  .feature-links a {
-    display: block;
-    color: #1a2a6c;
-    font-weight: bold;
-    text-decoration: underline;
-    margin-bottom: 6px;
-    font-size: 15px;
-  }
-  .feature-links h3 {
-    margin-top: 20px;
-    font-size: 15px;
-  }
-  .feature-links ul {
-    margin: 10px 0 0 20px;
-    font-size: 14px;
-  }
-  .feature-links li { margin-bottom: 6px; }
+    .screenshot-placeholder button {
+      width: 60%;
+      padding: 10px;
+    }
 
-  .bottom-mascot-placeholder {
-    width: 260px;
-    height: 160px;
-    background: #cfd8e3;
-    border: 2px dashed #8896a6;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    color: #556;
-    margin: 20px 0 10px;
-  }
 
-  footer {
-    font-size: 11px;
-    color: #445;
-  }
+    .feature-links a {
+      display: block;
+      color: #1a2a6c;
+      font-weight: bold;
+      text-decoration: underline;
+      margin-bottom: 6px;
+      font-size: 15px;
+    }
 
-  /* ---- Image Results ---- */
-  .results{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 30px;
-    width: 100%;
-    margin-bottom: 40px;
-  }
+    .feature-links h3 {
+      margin-top: 20px;
+      font-size: 15px;
+    }
 
-  .results-section{
-    width:100%;
-  }
+    .feature-links ul {
+      margin: 10px 0 0 20px;
+      font-size: 14px;
+    }
 
-  .result-section h2 {
-color: #f5921b;
-font-style: italic;
-font-size: 22px;
-text-align: center;
-margin-bottom: 15px;
-}
+    .feature-links li {
+      margin-bottom: 6px;
+    }
 
-.result-box {
-width: 100%;
-height: 400px;
-background: #cfd8e3;
-border: 2px dashed #8896a6;
+    .bottom-mascot-placeholder {
+      width: 260px;
+      height: 160px;
+      background: #cfd8e3;
+      border: 2px dashed #8896a6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: #556;
+      margin: 20px 0 10px;
+    }
 
-display: flex;
-justify-content: center;
-align-items: center;
+    footer {
+      font-size: 11px;
+      color: #445;
+    }
 
-padding: 20px;
-color: #556;
-font-size: 13px;
-text-align: center;
-}
+    /* ---- Image Results ---- */
+    .results {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      width: 100%;
+      margin-bottom: 40px;
+    }
 
-.result-box img {
-display: none;
-max-width: 100%;
-max-height: 100%;
-object-fit: contain;
-}
-  
-</style>
+    .results-section {
+      width: 100%;
+    }
+
+    .result-section h2 {
+      color: #f5921b;
+      font-style: italic;
+      font-size: 22px;
+      text-align: center;
+      margin-bottom: 15px;
+    }
+
+    .result-box {
+      width: 100%;
+      height: 400px;
+      background: #cfd8e3;
+      border: 2px dashed #8896a6;
+
+      display: flex;
+      justify-content: center;
+      align-items: center;
+
+      padding: 20px;
+      color: #556;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .result-box img {
+      display: none;
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+  </style>
 </head>
+
 <body>
 
   <div class="top-banner">
-    <div class="logo-placeholder"><img alt="logo image" src="webImg/Better_Call_Saul_logo.png" style="width:100%;"></div>
+    <div class="logo-placeholder"><img alt="logo image" src="webImg/Better_Call_Saul_logo.png" style="width:100%;">
+    </div>
     <div class="tagline">Experience the Power of the Goodman Recovery!</div>
     <div class="banner-ad-placeholder"></div>
   </div>
@@ -307,7 +339,7 @@ object-fit: contain;
       <div class="availability-box">
         Am I in your area?
       </div>
-      
+
       <div class="zip-form">
         <input type="text" maxlength="5" placeholder="zipcode">
         <button>go</button>
@@ -327,149 +359,197 @@ object-fit: contain;
       <p class="subhead">Alburquerque's preeminent legal service provider.</p>
 
       <div class="feature-row">
-       <div class="screenshot-placeholder">
-            <p>Drag & drop or select your image</p>
-  
- 
-         <form id = "uploadForm"
-               action="/upload" 
-               method="POST" 
-               enctype="multipart/form-data">
-            <input
-                type="file"
-                id="Upload"
-                name="ImageUpload"
-                accept="image/png"
-            />
-             <button type="submit">Submit</button>
-        </form>
+        <div class="screenshot-placeholder">
+          <p>Drag & drop or select your images</p>
 
-        <p id="uploadStatus"></p>
-    </div>
-    <hr class="content-line">
 
-    <div class = "results">
-      <div class = "result-section">
-        <h2>Original Image</h2>
-
-        <div class = "result-box">
-          <p id = "originalMessage">
-            Your uploaded image will appear hear.
-          </p>
-
-          <img id="originalImage"
-          alt = "Original uploaded image"
-          >
+          <form id="uploadForm" action="/upload" method="POST" enctype="multipart/form-data">
+            <input type="file" id="Upload" name="ImageUpload" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple />
+            <button type="submit">Submit</button>
+          </form>
+          <p id="uploadStatus"></p>
         </div>
+        <hr class="content-line">
+
+        <div class="results">
+          <div class="result-section">
+            <h2>Original Image</h2>
+
+            <div class="result-box">
+              <p id="originalMessage">
+                Your uploaded image will appear hear.
+              </p>
+
+              <img id="originalImage" alt="Original uploaded image">
+            </div>
+          </div>
+
+          <div class="result-section">
+            <h2>Edited Image</h2>
+
+            <div class="result-box">
+              <p id="editedMessage">
+                Your edited image will appear here.
+              </p>
+
+              <img id="editedImage" alt="Edited image">
+            </div>
+          </div>
+        </div>
+        <footer>
+          Saul Goodman is a registered trademark of Sony Pictures Television Inc.
+        </footer>
       </div>
 
-    <div class="result-section">
-      <h2>Edited Image</h2>
-
-      <div class = "result-box">
-        <p id = "editedMessage">
-          Your edited image will appear here.
-        </p>
-
-        <img 
-          id = "editedImage"
-          alt="Edited image"
-          >
-      </div>
     </div>
-    </div>    
-      <footer>
-        Saul Goodman is a registered trademark of Sony Pictures Television Inc.
-      </footer>
-    </div>
-
-  </div>
-<!--
+    <!--
 Server Script  
 
 -->
-<script>
-const form = document.getElementById("uploadForm");
-const fileInput = document.getElementById("Upload");
-const status = document.getElementById("uploadStatus");
+    <script>
+      const form = document.getElementById("uploadForm");
+      const fileInput = document.getElementById("Upload");
+      const status = document.getElementById("uploadStatus");
 
-const originalImage = document.getElementById("originalImage");
-const originalMessage = document.getElementById("originalMessage");
+      const originalImage = document.getElementById("originalImage");
+      const originalMessage = document.getElementById("originalMessage");
 
-const editedMessage = document.getElementById("editedMessage");
+      const editedMessage = document.getElementById("editedMessage");
+      const editedImage = document.getElementById("editedImage");
+      const submitButton = form.querySelector('button[type="submit"]');
+      let submitting = false;
+      let originalImageURL;
 
-
-form.addEventListener("submit", async (event) => {
-
-// Stop the entire webpage from reloading
-event.preventDefault();
-
-const file = fileInput.files[0];
-
-// Make sure an image was selected
-if (!file) {
-status.textContent = "Please select an image first.";
-return;
-}
-
-
-// Show the selected image in the Original Image box
-const imageURL = URL.createObjectURL(file);
-
-originalImage.src = imageURL;
-originalImage.style.display = "block";
-
-originalMessage.style.display = "none";
-
-
-// Show upload status
-status.textContent = "Uploading...";
-
-// Eventually Python processing will happen here
-editedMessage.textContent = "Waiting for image processing...";
+      async function requestJSON(url, options = {}) {
+        const response = await fetch(url, {
+          ...options,
+          cache: "no-store",
+          signal: AbortSignal.timeout(60000)
+        });
+        let data;
+        try {
+          data = await response.json();
+        } catch {
+          throw new Error("The server returned an unexpected response. Please refresh and try again.");
+        }
+        if (!response.ok) {
+          throw new Error(typeof data.detail === "string" ? data.detail : "The request failed. Please try again.");
+        }
+        return data;
+      }
 
 
-// Send image to your server
-const formData = new FormData();
+      form.addEventListener("submit", async (event) => {
 
-formData.append("ImageUpload", file);
+        // Stop the entire webpage from reloading
+        event.preventDefault();
+        if (submitting) return;
 
+        const files = Array.from(fileInput.files);
+        const file = files[0];
 
-try {
-
-const response = await fetch("/upload", {
-method: "POST",
-body: formData
-});
-
-
-if (response.ok) {
-
-status.textContent = "Image uploaded successfully!";
-
-editedMessage.textContent =
-"Image uploaded. Ready for processing.";
-
-} else {
-
-status.textContent = "Upload failed.";
-
-editedMessage.textContent =
-"Image could not be processed.";
-}
+        // Make sure an image was selected
+        if (!file) {
+          status.textContent = "Please select at least one image first.";
+          return;
+        }
+        if (files.length > 20) {
+          status.textContent = "Please select no more than 20 images at a time.";
+          return;
+        }
 
 
-} catch (error) {
+        // Show the selected image in the Original Image box
+        if (originalImageURL) URL.revokeObjectURL(originalImageURL);
+        originalImageURL = URL.createObjectURL(file);
 
-console.error(error);
+        originalImage.src = originalImageURL;
+        originalImage.style.display = "block";
 
-status.textContent = "Upload failed.";
+        originalMessage.style.display = "none";
 
-editedMessage.textContent =
-"Image could not be processed.";
-}
 
-});
-</script>
+        // Show upload status
+        submitting = true;
+        submitButton.disabled = true;
+        status.textContent = "Uploading...";
+
+        // Clear the previous result while the new document is reconstructed.
+        editedImage.style.display = "none";
+        editedImage.removeAttribute("src");
+        editedMessage.style.display = "block";
+        editedMessage.textContent = "Waiting for image processing...";
+
+
+        // Send all selected images together to your server
+        const formData = new FormData();
+
+        for (const selectedFile of files) {
+          formData.append("ImageUpload", selectedFile);
+        }
+
+
+        try {
+
+          let submission = await requestJSON("/upload", {
+            method: "POST",
+            body: formData
+          });
+
+          if (!submission.status_url || !submission.status) {
+            throw new Error("The server did not start reconstruction. Please try again.");
+          }
+          const progress = {
+            created: "Preparing reconstruction...",
+            queued: "Waiting for reconstruction to start...",
+            processing: "Finding the paper strips...",
+            detected: "Preparing the detected strips...",
+            normalized: "Sorting strips and reconstructing your document..."
+          };
+          while (submission.status !== "complete") {
+            if (submission.status === "failed") {
+              throw new Error(submission.error || "Document reconstruction failed. Please try another image.");
+            }
+            status.textContent = progress[submission.status] || "Reconstructing your document...";
+            editedMessage.textContent = status.textContent;
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            submission = await requestJSON(submission.status_url);
+          }
+
+          if (!submission.document_url) {
+            throw new Error("The reconstructed document is not available. Please try again.");
+          }
+          status.textContent = "Loading reconstructed document...";
+          editedMessage.textContent = status.textContent;
+          editedImage.src = submission.document_url;
+          try {
+            await editedImage.decode();
+          } catch {
+            throw new Error("Reconstruction finished, but the document could not be loaded. Please try again.");
+          }
+          editedImage.style.display = "block";
+          editedMessage.style.display = "none";
+          status.textContent = "Reconstruction complete!";
+
+
+        } catch (error) {
+
+          console.error(error);
+
+          const message = error.name === "TimeoutError"
+            ? "The request timed out. Reconstruction may still be running."
+            : error.message;
+          status.textContent = message;
+          editedMessage.textContent = message;
+          editedImage.style.display = "none";
+          editedMessage.style.display = "block";
+        } finally {
+          submitting = false;
+          submitButton.disabled = false;
+        }
+
+      });
+    </script>
 </body>
+
 </html>
