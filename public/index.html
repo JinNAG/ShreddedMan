@@ -198,28 +198,47 @@
     }
 
 
-    .screenshot-placeholder {
-      width: 420px;
-      height: 500px;
-      background: #cfd8e3;
+    .upload-panel {
+      margin-top: 18px;
+      background: #dceefb;
       border: 2px dashed #8896a6;
-      font-size: 13px;
-      color: #556;
-      flex-shrink: 0;
-
+      padding: 16px 14px;
       display: flex;
       flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      gap: 16px;
+      gap: 12px;
     }
 
+    .upload-panel form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: center;
+    }
 
-    .screenshot-placeholder button {
+    .upload-panel input[type="file"] {
+      width: 100%;
+      background: #fff;
+      border: 1px solid #8896a6;
+      padding: 8px;
+    }
+
+    .upload-panel button {
       width: 60%;
       padding: 10px;
+      background: #f5921b;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
     }
 
+    #uploadStatus {
+      min-height: 1.2em;
+      text-align: center;
+      font-size: 13px;
+      color: #1a2a6c;
+    }
 
     .feature-links a {
       display: block;
@@ -359,18 +378,6 @@
       <p class="subhead">Alburquerque's preeminent legal service provider.</p>
 
       <div class="feature-row">
-        <div class="screenshot-placeholder">
-          <p>Drag & drop or select your images</p>
-
-
-          <form id="uploadForm" action="/upload" method="POST" enctype="multipart/form-data">
-            <input type="file" id="Upload" name="ImageUpload" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple />
-            <button type="submit">Submit</button>
-          </form>
-          <p id="uploadStatus"></p>
-        </div>
-        <hr class="content-line">
-
         <div class="results">
           <div class="result-section">
             <h2>Original Image</h2>
@@ -381,6 +388,14 @@
               </p>
 
               <img id="originalImage" alt="Original uploaded image">
+            </div>
+
+            <div class="upload-panel">
+              <form id="uploadForm" action="/upload" method="POST" enctype="multipart/form-data">
+                <input type="file" id="Upload" name="ImageUpload" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple />
+                <button type="submit">Submit</button>
+              </form>
+              <p id="uploadStatus"></p>
             </div>
           </div>
 
