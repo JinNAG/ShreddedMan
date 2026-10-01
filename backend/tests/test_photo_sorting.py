@@ -12,12 +12,41 @@ import sys
 import tempfile
 import unittest
 
+import cv2
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from sort_strips import sort_strips
 from detect_paper import detect_submission
 from normalize_strips import normalize_submission
 from submission import create_submission
+
+
+def text_row_steps(document: Path, report: dict) -> np.ndarray:
+    """Vertical steps of text lines at the joins of document.png, in pixels.
+
+    Text rows just inside both sides of each join are compared in short
+    windows down the page; windows without clear text on both sides are skipped.
+    """
+    ink = np.clip((200 - cv2.imread(str(document), cv2.IMREAD_GRAYSCALE).astype(np.float32)) / 120, 0, 1)
+    placed = [entry["preview"] for entry in report["order"] if entry["preview"]]
+    steps = []
+    for a, b in zip(placed, placed[1:]):
+        left = ink[:, a["x"] + a["width"] // 2:a["x"] + a["width"] * 9 // 10].mean(1)
+        right = ink[:, b["x"] + b["width"] // 10:b["x"] + b["width"] // 2].mean(1)
+        for top in range(130, len(left) - 280, 125):
+            window = left[top:top + 250]
+            if window.std() < 0.02:
+                continue
+            with np.errstate(invalid="ignore", divide="ignore"):  # Blank windows have no correlation.
+                correlation, shift = max(
+                    (np.nan_to_num(np.corrcoef(window, right[top + shift:top + 250 + shift])[0, 1], nan=-1), shift)
+                    for shift in range(-30, 31)
+                )
+            if correlation > 0.6:
+                steps.append(abs(shift))
+    return np.asarray(steps)
 
 
 class PhotoSortingTests(unittest.TestCase):
@@ -39,6 +68,10 @@ class PhotoSortingTests(unittest.TestCase):
             actual = [int(entry["source"][5:-4]) for entry in report["order"]
                       if entry["position"] is not None and int(entry["source"][5:-4]) in checked]
             self.assertEqual(actual, expected)
+            # Text lines continue across joins: no strip sits a line (or more) off.
+            steps = text_row_steps(submission.final_document / "document.png", report)
+            self.assertLessEqual(np.median(steps), 2)
+            self.assertLessEqual(np.percentile(steps, 90), 4)
 
     @unittest.skipUnless(os.environ.get("SHREDDEDMAN_PHOTO_REGRESSIONS") == "1", "Opt-in local photo regression")
     def test_photo8_pair_recovers_checked_text_strip_order(self):

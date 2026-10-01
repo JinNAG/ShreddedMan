@@ -17,12 +17,19 @@ from time import perf_counter
 import cv2
 import numpy as np
 
-from strip_matching import ink_fraction, ink_profiles, match_profiles
+from strip_matching import ink_fraction, ink_profiles, level_strips, match_profiles, seam_row_shifts
 from strip_order import optimize_orders
 from submission import Submission, write_json
 from strip_ocr import DEFAULT_OCR_WORKERS, TesseractOCR
 from join_verification import JoinVerifier, refine_orders, verify_document_orders
 from join_report import build_join_report, write_join_reports
+
+
+# Joins between leveled strips: search range (fractions of page height and of
+# scale), and the score cost of each 1% shift or scale change (quadratic).
+MAX_ROW_SHIFT = 0.04
+MAX_RELATIVE_SCALE = 0.02
+LEVEL_PRIOR = 0.05
 
 
 def rank_orders(
@@ -57,15 +64,38 @@ def _extrapolate(points, coordinates, values):
     return result
 
 
-def assemble_preview(
-    images: list[np.ndarray], order: tuple[int, ...], warps: np.ndarray, height: int,
-) -> tuple[np.ndarray, list[dict]]:
-    """Render the matched row maps; only the preview is resized and aligned."""
+def level_row_maps(
+    height: int, steps: list[np.ndarray], weights: list[float], stiffness: float = 0.01,
+) -> list[np.ndarray]:
+    """Line up text at each join while keeping every strip level.
+
+    steps[k][y] is the row of strip k+1 that continues row y of strip k,
+    minus y. Chaining those steps would pass every small error on to all later
+    strips, so the page would drift or step. Instead, all corrections are
+    solved together: each join pulls its right strip toward its left strip
+    (weighted by the text found along the cut), and a weak spring holds every
+    strip at its leveled placement. Returns page row -> strip row maps.
+    """
     rows = np.arange(height, dtype=np.float32)
-    maps = [rows]
-    for a, b in zip(order, order[1:]):
-        maps.append(_extrapolate(maps[-1], rows, warps[a, b]))
-    bounds = [_extrapolate(np.array([0, height - 1]), mapping, rows) for mapping in maps]
+    system = stiffness * np.eye(len(steps) + 1)
+    targets = np.zeros((len(steps) + 1, height))
+    for position, (step, weight) in enumerate(zip(steps, weights)):
+        system[position:position + 2, position:position + 2] += weight * np.array([[1, -1], [-1, 1]])
+        targets[position] -= weight * step
+        targets[position + 1] += weight * step
+    return [rows + correction for correction in np.linalg.solve(system, targets).astype(np.float32)]
+
+
+def assemble_preview(
+    images: list[np.ndarray], order: tuple[int, ...], maps: list[np.ndarray],
+) -> tuple[np.ndarray, list[dict]]:
+    """Render strips through their row maps; only the preview is resized and aligned."""
+    height = len(maps[0])
+    rows = np.arange(height, dtype=np.float32)
+    # Bound the canvas by paper, not by the transparent rows around leveled strips.
+    paper = [np.flatnonzero(images[index][:, :, 3].any(1)) for index in order]
+    bounds = [_extrapolate(np.array([found[0], found[-1]] if len(found) else [0, height - 1], np.float32),
+                           mapping, rows) for found, mapping in zip(paper, maps)]
     top = int(np.floor(min(bound[0] for bound in bounds)))
     bottom = int(np.ceil(max(bound[1] for bound in bounds))) + 1
     output_rows = np.arange(top, bottom, dtype=np.float32)
@@ -127,22 +157,28 @@ def sort_strips(
         if image is None:
             raise ValueError(f"Could not open {path}")
         images.append(image)
-    common_height = int(np.median([image.shape[0] for image in images]))
     fractions = [ink_fraction(image) for image in images]
     active = [index for index, fraction in enumerate(fractions) if fraction >= 0.0005]
     low_ink = [index for index in range(len(paths)) if index not in active]
     if not active:
         raise ValueError("No usable ink found; all strips are blank or too faint to order.")
-    profiles = [ink_profiles(images[index], common_height) for index in active]
+    stage = perf_counter()
+    # Matching, OCR, and the preview all use copies placed level on one page grid.
+    active_images, leveling = level_strips([images[index] for index in active])
+    common_height = active_images[0].shape[0]
+    timings["leveling"] = round(perf_counter() - stage, 3)
+    profiles = [ink_profiles(image, common_height) for image in active_images]
     if len(active) > 1 and not any(np.any(profile[:2] > 0) for profile in profiles):
         raise ValueError("No usable ink near the strip edges; cannot estimate an order.")
 
     ocr = TesseractOCR(ocr_mode, ocr_language, output_dir.parent / ".ocr_cache.json")
     stage = perf_counter()
-    matches = match_profiles(profiles)
+    # Leveled neighbors differ by a few rows. Without a cost on shifting,
+    # repeating text lines can pull a join onto the wrong line.
+    matches = match_profiles(profiles, max_shift=max(1, round(common_height * MAX_ROW_SHIFT)),
+                             scale_range=MAX_RELATIVE_SCALE, level_prior=LEVEL_PRIOR)
     timings["visual_matching"] = round(perf_counter() - stage, 3)
     scales, offsets = matches.scales, matches.offsets
-    active_images = [images[index] for index in active]
     active_labels = [labels[index] for index in active]
     visual_order = rank_orders(matches.scores, count=1)[0][1]
     verifier = JoinVerifier(active_images, matches, common_height, ocr, workers=ocr_workers)
@@ -167,20 +203,18 @@ def sort_strips(
             for candidate in document_check["candidates"]:
                 candidate["order"] = [active_labels[index] for index in candidate["order"]]
         timings["document_verification"] = round(perf_counter() - stage, 3)
-        stage = perf_counter()
-        # Updates the row maps shared with the preview below.
-        # Positive line shifts move the right strip's text up against the left strip.
-        line_corrections = [{**item, "left": active_labels[item["left"]], "right": active_labels[item["right"]]}
-                            for item in verifier.correct_line_offsets(ranked[0][1])]
-        timings["line_offset_check"] = round(perf_counter() - stage, 3)
         join_report = build_join_report(ranked[0][1], ranked, scores, verifier, active_labels, refinement,
                                         document_check=document_check)
     finally:
         ocr.flush()
     best_score, active_order = ranked[0]
-    preview, placements = assemble_preview(
-        active_images, active_order, matches.warps, common_height
-    )
+    stage = perf_counter()
+    # Edge traces separate neighbors well, but cut shadows make them noisy
+    # for exact height. Text rows just inside each chosen cut set the final rows.
+    seams = [seam_row_shifts(active_images[a], active_images[b]) for a, b in zip(active_order, active_order[1:])]
+    maps = level_row_maps(common_height, [step for step, _ in seams], [coverage for _, coverage in seams])
+    timings["final_alignment"] = round(perf_counter() - stage, 3)
+    preview, placements = assemble_preview(active_images, active_order, maps)
     order = tuple(active[index] for index in active_order) + tuple(low_ink)
     placements.extend([None] * len(low_ink))
     joins = max(1, len(active) - 1)
@@ -206,11 +240,14 @@ def sort_strips(
         "search": "exhaustive" if len(active) <= 8 else "mixed_integer_global",
         "optimal_for_pairwise_scores": active_order == pair_ranked[0][1],
         "matching": {
-            "method": "full-height edge ink and text-row traces; shared FFT registration and constrained local alignment",
+            "method": "strips leveled on one page grid by their shared text rows; full-height edge ink and "
+                      "text-row traces; shared FFT registration and constrained local alignment",
             "ordered_pairs_compared": len(active) * (len(active) - 1),
             "edge_weight": 0.8, "text_row_weight": 0.2,
             "affine_weight": 0.6, "locally_aligned_weight": 0.4,
             "low_ink_threshold": 0.0005,
+            "max_row_shift": MAX_ROW_SHIFT, "max_relative_scale": MAX_RELATIVE_SCALE,
+            "level_prior_per_percent": LEVEL_PRIOR,
         },
         "verification": {
             "ocr": ocr.metadata(),
@@ -229,7 +266,6 @@ def sort_strips(
             "context_score_weights": {"pair_score": 0.25, "three_strip_ocr": 0.75} if refinement["enabled"] else {"pair_score": 1.0},
             "refinement": refinement,
             "document_check": document_check,
-            "line_offset_corrections": line_corrections,
             "html_report": f"{output_dir.name}/join_report.html", "json_report": f"{output_dir.name}/join_report.json",
         },
         "text_strip_count": len(active),
@@ -243,6 +279,8 @@ def sort_strips(
             {
                 "position": None if index in low_ink else number, "source": labels[index],
                 "source_path": str(paths[index]), "preview": placement,
+                # Scale and top row of the strip on the leveled page grid.
+                "leveling": None if index in low_ink else leveling[active.index(index)],
                 "ink_fraction": fractions[index],
                 "position_status": "unplaced_low_ink" if index in low_ink else "estimated",
             }

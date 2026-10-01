@@ -9,11 +9,87 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sort_strips import rank_orders, sort_strips
-from strip_matching import _affine_matches, ink_profiles, match_profiles
+from sort_strips import level_row_maps, rank_orders, sort_strips
+from strip_matching import _affine_matches, ink_profiles, level_strips, match_profiles, seam_row_shifts, strip_ink
+
+
+def text_page(height, columns, rng, blank_right=0):
+    """Word-like ink blocks in paragraphs: body text puts lines on every strip."""
+    page = np.full((height, columns, 4), 255, np.uint8)
+    y = round(height * 0.07)
+    while y < height * 0.88:
+        for _ in range(rng.integers(3, 7)):
+            x, end = 6, columns - blank_right - int(rng.integers(0, columns // 3))
+            while x < end:
+                word = int(rng.integers(8, 40))
+                page[y:y + 12, x:min(x + word, end), :3] = 30
+                x += word + int(rng.integers(5, 10))
+            y += 24
+        y += 26
+    return page
+
+
+def text_rows(image):
+    return cv2.GaussianBlur((strip_ink(image)[:, 6:-6] > 0.2).mean(1).astype(np.float32)[:, None],
+                            (1, 0), sigmaX=0, sigmaY=1).ravel()
+
+
+def best_shift(a, b, radius=12):
+    """Row shift of b that best matches a (Pearson), and that correlation."""
+    values = []
+    for shift in range(-radius, radius + 1):
+        x = a[radius:len(a) - radius]
+        y = b[radius + shift:len(b) - radius + shift]
+        values.append((float(np.corrcoef(x, y)[0, 1]), shift))
+    return max(values)[1], max(values)[0]
 
 
 class StripSortingTests(unittest.TestCase):
+    def test_leveling_lines_up_text_across_photo_scales_and_ragged_tips(self):
+        # Two photos at different distances, and tips cut or detected unevenly:
+        # stretching every crop to one height would misplace whole text lines.
+        rng = np.random.default_rng(11)
+        width, scales = 40, (1.0, 0.95, 1.04, 1.0, 0.95, 1.0)
+        page = text_page(1200, width * len(scales), rng, blank_right=width)
+        strips = []
+        for index, scale in enumerate(scales):
+            piece = page[int(rng.integers(0, 15)):1200 - int(rng.integers(0, 60)), index * width:(index + 1) * width]
+            strips.append(cv2.resize(piece, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA))
+        leveled, placements = level_strips(strips)
+        self.assertEqual(len({image.shape[0] for image in leveled}), 1)
+        # The blank margin strip has no text to place it; it keeps the default.
+        self.assertEqual([placement["placed_by_text"] for placement in placements], [True] * 5 + [False])
+        recovered = [placement["scale"] * scale for placement, scale in zip(placements, scales[:5])]
+        self.assertLess(np.ptp(recovered) / np.mean(recovered), 0.01)
+        rows = [text_rows(image) for image in leveled[:5]]
+        for a, b in zip(rows, rows[1:]):
+            shift, correlation = best_shift(a, b)
+            self.assertLessEqual(abs(shift), 2)
+            self.assertGreater(correlation, 0.5)  # Ragged line ends differ between strips.
+
+    def test_seam_shift_follows_text_rows_beside_the_cut(self):
+        rng = np.random.default_rng(3)
+        page = text_page(1200, 80, rng)
+        left, right = page[:, :40].copy(), page[:, 40:].copy()
+        right = cv2.warpAffine(right, np.float32([[1, 0, 0], [0, 1, 5]]), (40, 1200), borderValue=(255, 255, 255, 255))
+        step, coverage = seam_row_shifts(left, right)
+        self.assertGreater(coverage, 0.6)
+        np.testing.assert_allclose(step[200:900], 5, atol=1)
+        blank = np.full_like(left, 255)
+        step, coverage = seam_row_shifts(left, blank)
+        self.assertEqual(coverage, 0)
+        self.assertFalse(np.any(step))
+
+    def test_row_maps_keep_strips_level_instead_of_chaining_errors(self):
+        # A small error at every join adds up along a chain (39 * 3 = 117 rows).
+        maps = level_row_maps(200, [np.full(200, 3.0)] * 39, [1.0] * 39)
+        corrections = np.array([mapping - np.arange(200) for mapping in maps])
+        self.assertLess(np.abs(corrections).max(), 40)
+        # A single real step is followed, and a join without text adds nothing.
+        maps = level_row_maps(200, [np.full(200, 10.0), np.full(200, 25.0)], [1.0, 0.0])
+        self.assertAlmostEqual(float(maps[1][100] - maps[0][100]), 10, delta=0.2)
+        self.assertAlmostEqual(float(maps[2][100] - 100), 0, delta=0.2)
+
     def test_shared_fft_matches_direct_full_height_correlation(self):
         # Check both directions and positive/negative shifts independently of
         # FFT implementation details, including the zero padding at the tips.
@@ -157,7 +233,9 @@ class StripSortingTests(unittest.TestCase):
             self.assertIsNone(report["order"][-1]["position"])
             np.testing.assert_array_equal(cv2.imread(str(inputs / "strip6.png"), -1), blank)
             preview = cv2.imread(str(output / "document.png"))
-            self.assertEqual(preview.shape[1], count * width)
+            # Strips are drawn at their estimated page scale: within a pixel of
+            # their source width each, and the blank strip is left out.
+            self.assertLessEqual(abs(preview.shape[1] - count * width), count)
 
     def test_all_blank_input_leaves_existing_output_untouched(self):
         with tempfile.TemporaryDirectory() as directory:

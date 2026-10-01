@@ -113,7 +113,8 @@ application use. Confidence is a heuristic support score, **not a probability
 of correctness**; broken text may remain even at a high score.
 The full-page OCR check can move groups of strips across weak joins before
 choosing the most readable reconstruction it found. Small remaining row shifts
-are refined from ink crossing the selected joins.
+are refined from text rows beside the selected joins, while every strip stays
+level on the page.
 The API also returns `review_required` and `join_report_url` for a completed
 reconstruction. The website links to the join report when review is suggested.
 
@@ -196,13 +197,19 @@ unfinished jobs must be resubmitted after a forced stop.
 
 ## Reconstruction and tests
 
+Before matching, every text strip is placed level on one page grid. All strips
+of a page share its text lines, so each strip's rows of ink are registered
+(scale and top position) against the average of all the other strips. Strip
+tops start on the page top; near-blank margin strips keep that placement.
+This copes with photos taken at different distances and with crops whose tips
+were cut or detected unevenly, and one strip's error cannot pass to the next.
+Only the analysis and preview copies are resampled; saved strip PNGs are unchanged.
 Sorting compares all ordered pairs using full-height edge ink and text-row
-alignment, with vertical scale/offset search and small smooth local corrections.
-When text-bearing crops differ in height by at least 8% of their median, the
-analysis centers short strips in transparent padding. This preserves their
-vertical pixel spacing; saved strip PNGs are unchanged.
-The final page also checks nearby strips against each other to correct a
-vertical offset when one adjacent match locks onto the wrong text line.
+alignment. Vertical shifts and scale changes between leveled strips cost score,
+so repeating text lines cannot pull a join onto a neighboring line.
+For the final page, text rows just inside each chosen cut set the remaining
+small row shifts. These are solved together with a weak pull toward the level
+placement, so small errors do not accumulate across the page.
 With OCR enabled, each pair is also reconstructed and analyzed with dictionary
 correction disabled, allowing incomplete words and names. OCR rewards readable
 ink near the cut and penalizes unrecognized ink, rather than trusting only the
